@@ -33,7 +33,7 @@ docs/
 
 ## Key Design Decisions
 
-1. **Single Board + Transitional States**: One buffer with Dead/Alive/Dying/BecomingAlive states
+1. **Single Board + Transitional States**: One buffer with Dead/Alive/Dying/Resurrecting states
    - No double-buffering; all computation in-place
    - Two-pass generation: Mark (compute) → Normalize (finalize)
    - Enables clear neighbor counting that treats "originally live" consistently

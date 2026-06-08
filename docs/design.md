@@ -18,7 +18,7 @@ This document describes the design of the Rust implementation of Conway's Game o
 
 ## Single Board with Transitional States
 
-**Decision**: Use one board buffer with four cell states (Dead, Alive, Dying, BecomingAlive) instead of maintaining two full board copies.
+**Decision**: Use one board buffer with four cell states (Dead, Alive, Dying, Resurrecting) instead of maintaining two full board copies.
 
 **Rationale**:
 - Reduces memory usage (single buffer instead of double buffering)
@@ -30,11 +30,11 @@ This document describes the design of the Rust implementation of Conway's Game o
 1. **Mark Pass**: Each cell computes its next state and updates to a transitional state
    - Alive cells that survive stay Alive
    - Alive cells that die become Dying
-   - Dead cells that become alive become BecomingAlive
+   - Dead cells that become alive become Resurrecting
    - Dead cells that stay dead remain Dead
 2. **Normalize Pass**: Convert transitional states to final states
    - Dying → Dead
-   - BecomingAlive → Alive
+   - Resurrecting → Alive
    - Final board contains only Dead and Alive
 
 **Why Two Passes?**:
@@ -45,12 +45,12 @@ This document describes the design of the Rust implementation of Conway's Game o
 ## Cell State Lifecycle
 
 ```
-Dead ──[3 neighbors]──→ BecomingAlive ──[normalize]──→ Alive
+Dead ──[3 neighbors]──→ Resurrecting ──[normalize]──→ Alive
 Alive ──[2-3 neighbors]──→ Alive
 Alive ──[<2 or >3 neighbors]──→ Dying ──[normalize]──→ Dead
 ```
 
-**Neighbor Counting Rule**: During the mark pass, count Alive AND Dying as originally live, Dead AND BecomingAlive as originally dead. This ensures that:
+**Neighbor Counting Rule**: During the mark pass, count Alive AND Dying as originally live, Dead AND Resurrecting as originally dead. This ensures that:
 - Cells that were alive at the start of the generation are counted consistently
 - The one-board design doesn't corrupt neighbor calculations
 - Transitional states don't interfere with the generation's outcome

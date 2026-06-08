@@ -53,11 +53,11 @@ cargo build --release
 ### Algorithm Overview
 
 - **Board**: Finite, bounded (out-of-bounds neighbors are dead; no toroidal wrapping)
-- **Cell States**: Dead, Alive, Dying, BecomingAlive (transitional states enable single-board generation)
+- **Cell States**: Dead, Alive, Dying, Resurrecting (transitional states enable single-board generation)
 - **Generation Advancement**:
   1. **Mark Pass**: Compute each cell's next state using transitional states
-  2. **Normalize Pass**: Convert Dying → Dead and BecomingAlive → Alive
-- **Neighbor Counting**: Alive and Dying treated as originally live; Dead and BecomingAlive treated as originally dead
+  2. **Normalize Pass**: Convert Dying → Dead and Resurrecting → Alive
+- **Neighbor Counting**: Alive and Dying treated as originally live; Dead and Resurrecting treated as originally dead
 - **Result**: After generation, board contains only Dead and Alive states
 
 ## Conway's Game of Life rules

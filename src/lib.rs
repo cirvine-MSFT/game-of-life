@@ -12,13 +12,13 @@ use std::fmt;
 /// - `Dead`: cell is dead
 /// - `Alive`: cell is alive
 /// - `Dying`: cell is alive but will become dead next generation (transitional state)
-/// - `BecomingAlive`: cell is dead but will become alive next generation (transitional state)
+/// - `Resurrecting`: cell is dead but will become alive next generation (transitional state)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CellState {
     Dead,
     Alive,
     Dying,
-    BecomingAlive,
+    Resurrecting,
 }
 
 /// Represents the Game of Life board with finite boundaries.
@@ -97,8 +97,8 @@ impl Board {
 
     /// Advances the board by one generation using a two-pass algorithm:
     /// 1. Mark pass: compute each cell's next state using transitional states, in-place
-    ///    During this pass, Alive|Dying count as "originally live", Dead|BecomingAlive as "originally dead"
-    /// 2. Normalize pass: convert Dying -> Dead and BecomingAlive -> Alive
+    ///    During this pass, Alive|Dying count as "originally live", Dead|Resurrecting as "originally dead"
+    /// 2. Normalize pass: convert Dying -> Dead and Resurrecting -> Alive
     ///
     /// After completion, the board contains only Dead and Alive states.
     /// No second board copy is allocated; all changes are made in-place via transitional states.
@@ -119,14 +119,14 @@ impl Board {
                     }
                     CellState::Dead => {
                         if live_neighbors == 3 {
-                            CellState::BecomingAlive
+                            CellState::Resurrecting
                         } else {
                             CellState::Dead
                         }
                     }
                     // During mark pass, we may encounter transitional states
                     // from earlier cells in this same iteration. Treat them as their original types:
-                    // Dying acts like Alive, BecomingAlive acts like Dead
+                    // Dying acts like Alive, Resurrecting acts like Dead
                     CellState::Dying => {
                         if live_neighbors == 2 || live_neighbors == 3 {
                             CellState::Alive
@@ -134,9 +134,9 @@ impl Board {
                             CellState::Dying
                         }
                     }
-                    CellState::BecomingAlive => {
+                    CellState::Resurrecting => {
                         if live_neighbors == 3 {
-                            CellState::BecomingAlive
+                            CellState::Resurrecting
                         } else {
                             CellState::Dead
                         }
@@ -154,7 +154,7 @@ impl Board {
                 let state = self.get(x, y);
                 let normalized = match state {
                     CellState::Dying => CellState::Dead,
-                    CellState::BecomingAlive => CellState::Alive,
+                    CellState::Resurrecting => CellState::Alive,
                     other => other,
                 };
                 self.set(x, y, normalized);
@@ -171,7 +171,7 @@ impl fmt::Display for Board {
                     CellState::Alive => '#',
                     CellState::Dead => '.',
                     CellState::Dying => 'D',
-                    CellState::BecomingAlive => 'B',
+                    CellState::Resurrecting => 'B',
                 };
                 write!(f, "{}", ch)?;
             }
@@ -295,9 +295,9 @@ mod tests {
         // (1,1) has neighbors (2,0), (2,1) = 2 -> Alive
         // (2,1) has neighbors (2,0), (1,1), (3,1) = 3 -> Alive
         // (3,1) has neighbors (2,0), (2,1) = 2 -> Alive
-        // (1,0) has neighbors (2,0), (1,1), (2,1) = 3 -> BecomingAlive
-        // (3,0) has neighbors (2,0), (2,1), (3,1) = 3 -> BecomingAlive
-        // (2,2) has neighbors (1,1), (2,1), (3,1) = 3 -> BecomingAlive
+        // (1,0) has neighbors (2,0), (1,1), (2,1) = 3 -> Resurrecting
+        // (3,0) has neighbors (2,0), (2,1), (3,1) = 3 -> Resurrecting
+        // (2,2) has neighbors (1,1), (2,1), (3,1) = 3 -> Resurrecting
         board.advance_generation();
 
         let expected = board_from_grid(&[".###.", ".###.", "..#..", ".....", "....."]);
