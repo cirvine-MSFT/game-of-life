@@ -62,7 +62,7 @@ Alive ──[<2 or >3 neighbors]──→ Dying ──[normalize]──→ Dead
 **Output**:
 - Shows initial state (generation 0)
 - Advances and prints each generation (0-10)
-- Uses Unicode block characters (█ for alive, · for dead) for clarity
+- Uses ASCII characters (`#` for alive, `.` for dead) for platform-neutral console output
 
 **Determinism**: The pattern and iteration count are hardcoded, ensuring consistent output for smoke tests
 
@@ -139,7 +139,7 @@ Cargo.toml     - Project manifest with library and binary targets
 | Bounded board (no wrapping) | Simpler edge semantics | Patterns don't preserve at edges |
 | No external dependencies | Lightweight, portable | Must implement everything from scratch |
 | Hardcoded console pattern | Deterministic, easy to test | Less flexible for exploration |
-| Unicode block output | Beautiful, readable | May not render on all terminals |
+| ASCII console output | Portable across Windows, Linux, and CI logs | Less visually rich than Unicode output |
 
 ## Future Enhancements
 

@@ -14,7 +14,7 @@ This repository is intentionally runtime-neutral for now. The first implementati
 
 ## Rust Prototype Implementation
 
-The Rust implementation uses a bounded board with transitional cell states and a two-pass generation algorithm. See [docs/design.md](docs/design.md) for detailed design rationale.
+The Rust implementation uses a bounded board with transitional cell states and a two-pass generation algorithm. See [docs/design.md](docs/design.md) for detailed design rationale and [docs/decision-rust.md](docs/decision-rust.md) for the language choice record.
 
 ### Build and Run (Windows)
 
@@ -75,4 +75,3 @@ For each generation:
 2. Add a small board representation.
 3. Implement generation advancement.
 4. Add tests for stable, oscillator, and edge-case patterns.
-

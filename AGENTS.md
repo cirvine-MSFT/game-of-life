@@ -131,7 +131,7 @@ cargo build --release
 | `.github/workflows/rust-ci.yml` | CI: format, lint, test, build, smoke test |
 | `docs/design.md` | Full design rationale and tradeoffs |
 | `docs/architecture.excalidraw` | Flow diagram of algorithm |
-| `.copilot-instructions.md` | Detailed Copilot guidance |
+| `.github/copilot-instructions.md` | Detailed Copilot guidance |
 | `AGENTS.md` | This file |
 
 ## When to Escalate
