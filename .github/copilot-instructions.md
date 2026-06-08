@@ -17,7 +17,7 @@ src/
 Cargo.toml        Project manifest with library + binary targets
 .github/
   workflows/
-    rust-ci.yml   CI workflow for format/lint/test/build on Windows/Linux
+    ci.yml        CI workflow for repository hygiene and Rust checks on Windows/Linux
   copilot-instructions.md  This file
 docs/
   design.md       Full design rationale and architecture notes
@@ -114,7 +114,7 @@ All tests must use readable ASCII grids with `#` for alive, `.` for dead.
 
 ## CI/CD Pipeline
 
-Workflow: `.github/workflows/rust-ci.yml`
+Workflow: `.github/workflows/ci.yml`
 
 **Runs on**: `windows-latest` and `ubuntu-latest`
 

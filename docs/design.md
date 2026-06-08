@@ -106,7 +106,7 @@ Cargo.toml     - Project manifest with library and binary targets
 
 ## CI/CD Design
 
-**Workflow File**: `.github/workflows/rust-ci.yml`
+**Workflow File**: `.github/workflows/ci.yml`
 
 **Checks** (run on matrix: windows-latest, ubuntu-latest):
 1. `cargo fmt --check` - Ensures code formatting

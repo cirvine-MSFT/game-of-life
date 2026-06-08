@@ -27,10 +27,10 @@ Every change must satisfy:
 - Console app pattern, output format, or iterations in `src/main.rs`
 - Test cases and helpers in `src/lib.rs` `#[cfg(test)]` section
 - Documentation in `docs/` and README
-- CI workflow in `.github/workflows/rust-ci.yml`
+- CI workflow in `.github/workflows/ci.yml`
 
-❌ **Do NOT change:**
-- `.github/workflows/ci.yml` (existing hygiene workflow—create separate Rust workflow instead)
+❌ **Do NOT change without explicit direction:**
+- Repository hygiene checks in `.github/workflows/ci.yml`
 - Repository startup files (CODEOWNERS, PR template, etc.)
 - Cargo.toml edition or package name without explicit direction
 
@@ -94,7 +94,7 @@ Any change must:
 
 ## CI Pipeline
 
-Workflow: `.github/workflows/rust-ci.yml`
+Workflow: `.github/workflows/ci.yml`
 
 **On push or PR to this branch**, CI:
 1. Runs on windows-latest and ubuntu-latest
@@ -128,7 +128,7 @@ cargo build --release
 | `src/lib.rs` | Core library: Board, CellState, generation, tests |
 | `src/main.rs` | Console app: 5×5 blinker demo |
 | `Cargo.toml` | Project manifest |
-| `.github/workflows/rust-ci.yml` | CI: format, lint, test, build, smoke test |
+| `.github/workflows/ci.yml` | CI: repository hygiene, format, lint, test, build, smoke test |
 | `docs/design.md` | Full design rationale and tradeoffs |
 | `docs/architecture.excalidraw` | Flow diagram of algorithm |
 | `.github/copilot-instructions.md` | Detailed Copilot guidance |
