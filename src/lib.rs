@@ -96,15 +96,14 @@ impl Board {
     }
 
     /// Advances the board by one generation using a two-pass algorithm:
-    /// 1. Mark pass: compute each cell's next state using transitional states
+    /// 1. Mark pass: compute each cell's next state using transitional states, in-place
+    ///    During this pass, Alive|Dying count as "originally live", Dead|BecomingAlive as "originally dead"
     /// 2. Normalize pass: convert Dying -> Dead and BecomingAlive -> Alive
     ///
     /// After completion, the board contains only Dead and Alive states.
+    /// No second board copy is allocated; all changes are made in-place via transitional states.
     pub fn advance_generation(&mut self) {
-        // Mark pass: compute next state for each cell
-        // Use a temporary vector to track state changes
-        let mut next_states = vec![CellState::Dead; self.width * self.height];
-
+        // Mark pass: compute next state for each cell, marking transitional states in-place
         for y in 0..self.height {
             for x in 0..self.width {
                 let current = self.get(x, y);
@@ -125,7 +124,9 @@ impl Board {
                             CellState::Dead
                         }
                     }
-                    // Transitional states should not occur at start of mark pass
+                    // During mark pass, we may encounter transitional states
+                    // from earlier cells in this same iteration. Treat them as their original types:
+                    // Dying acts like Alive, BecomingAlive acts like Dead
                     CellState::Dying => {
                         if live_neighbors == 2 || live_neighbors == 3 {
                             CellState::Alive
@@ -142,12 +143,10 @@ impl Board {
                     }
                 };
 
-                next_states[y * self.width + x] = next_state;
+                // Update in-place with transitional state
+                self.set(x, y, next_state);
             }
         }
-
-        // Apply mark pass results
-        self.cells = next_states;
 
         // Normalize pass: convert transitional states to final states
         for y in 0..self.height {
@@ -169,8 +168,8 @@ impl fmt::Display for Board {
         for y in 0..self.height {
             for x in 0..self.width {
                 let ch = match self.get(x, y) {
-                    CellState::Alive => '█',
-                    CellState::Dead => '·',
+                    CellState::Alive => '#',
+                    CellState::Dead => '.',
                     CellState::Dying => 'D',
                     CellState::BecomingAlive => 'B',
                 };

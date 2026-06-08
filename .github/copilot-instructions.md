@@ -18,10 +18,10 @@ Cargo.toml        Project manifest with library + binary targets
 .github/
   workflows/
     rust-ci.yml   CI workflow for format/lint/test/build on Windows/Linux
+  copilot-instructions.md  This file
 docs/
   design.md       Full design rationale and architecture notes
   architecture.excalidraw  Flow diagram of board/generation algorithm
-.copilot-instructions.md  This file
 ```
 
 ## Rust Conventions Used
@@ -34,7 +34,7 @@ docs/
 ## Key Design Decisions
 
 1. **Single Board + Transitional States**: One buffer with Dead/Alive/Dying/BecomingAlive states
-   - No double-buffering
+   - No double-buffering; all computation in-place
    - Two-pass generation: Mark (compute) → Normalize (finalize)
    - Enables clear neighbor counting that treats "originally live" consistently
 
@@ -157,7 +157,6 @@ Update docs when:
 1. **Board size**: Hardcoded in console app (5×5). Future enhancement: make configurable.
 2. **Patterns**: Only blinker in console app. Future: pattern library or file input.
 3. **Interactivity**: No step-through or interactive mode. Future: add if needed.
-4. **Unicode output**: Uses block characters (█, ·). May not render on all terminals.
 
 ## Extending to C++ (Sibling Branch)
 
