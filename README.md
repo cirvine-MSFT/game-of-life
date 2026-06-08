@@ -8,6 +8,10 @@ An interview-style Conway's Game of Life project designed to start small and gro
 - Keep the implementation easy to extend for future interview prompts.
 - Add tests and refactor as the project gains features.
 
+## Customer lens
+
+This project is also framed as reproducible simulation software for research, education, and interview discussion. See [CUSTOMERS.md](CUSTOMERS.md) for the personas, customer jobs, and roadmap lens that should guide future feature work.
+
 ## Current scope
 
 This repository is intentionally runtime-neutral for now. The first implementation can choose the language, test framework, and interface that best fit the next exercise.

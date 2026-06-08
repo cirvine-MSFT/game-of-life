@@ -143,12 +143,18 @@ Cargo.toml     - Project manifest with library and binary targets
 
 ## Future Enhancements
 
+Future work should be guided by the customer lens in [../CUSTOMERS.md](../CUSTOMERS.md). The current bounded 2D implementation remains the baseline, but research and education scenarios point toward reproducible experiment configuration, richer visualization, and analyzable outputs.
+
 1. **User Input**: Accept board patterns via file or command-line
 2. **Board Sizes**: Make dimensions configurable
-3. **Interactive Mode**: Step through generations interactively
-4. **Performance**: Profile and optimize for large boards (consider bit-packing for cells)
-5. **Visualization**: Integrate with GUI library for real-time animation
-6. **Patterns Library**: Pre-built patterns (gliders, oscillators, spaceships)
+3. **Experiment Configuration**: Record initial state, rules, boundary behavior, update mode, random seed, iteration limit, and software version so findings can be reproduced
+4. **Batch Runs**: Run many simulations across initial states and configuration variables, then aggregate outcomes
+5. **Pattern Analysis**: Detect still lifes, oscillators, periods, spaceships, extinction, and long transients
+6. **Visualization and Replay**: Provide views that explain board evolution better than console board dumps
+7. **Interactive Mode**: Step through generations interactively
+8. **Performance**: Profile and optimize for large boards or many independent runs (consider bit-packing or sparse representations when justified)
+9. **Telemetry**: Expose operations, timing, and memory-relevant dimensions for educator-facing algorithm comparisons
+10. **Patterns Library**: Pre-built patterns (gliders, oscillators, spaceships)
 
 ## References
 
