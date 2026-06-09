@@ -18,7 +18,7 @@ They value:
 - Deterministic, testable simulation behavior.
 - Performance that is motivated by real experiment scale.
 
-For this customer, telemetry is useful when it helps explain or improve large experiments, but their core need is usually analytical: which runs produced which patterns, when cycles emerged, how long transients lasted, and whether another person can reproduce the result.
+For this customer, runtime telemetry is not the primary output. Their core need is run analytics: which runs produced which patterns, when cycles emerged, how long transients lasted, aggregate statistics across experiments, and whether another person can reproduce the result. The exact result format is still to be defined, but it should be distinct from application telemetry streams.
 
 ## Secondary customer: educator / demonstrator
 
@@ -29,10 +29,10 @@ They value:
 - Named patterns such as still lifes, oscillators, gliders, and spaceships.
 - Step-through, replay, or timelapse views.
 - Visualization that is easier to understand than console board dumps.
-- Telemetry that explains operations, timing, memory-relevant dimensions, and algorithm tradeoffs.
+- Runtime telemetry that explains operations, timing, memory-relevant dimensions, and algorithm tradeoffs.
 - Examples that connect implementation choices to observable behavior.
 
-For this customer, telemetry can be a teaching tool: changing board size, algorithm, topology, or data representation should help students see why implementation choices matter.
+For this customer, runtime telemetry can be a teaching tool. OpenTelemetry-style events, logs, metrics, or dashboards can help show how changing board size, algorithm, topology, or data representation affects application behavior.
 
 ## Secondary customer: interviewer / evaluator
 
