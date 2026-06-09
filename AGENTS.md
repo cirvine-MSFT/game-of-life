@@ -16,16 +16,17 @@ Every change must satisfy:
 
 - [ ] `cargo fmt --check` passes (no formatting issues)
 - [ ] `cargo clippy --all-targets -- -D warnings` passes (no lint warnings as errors)
-- [ ] `cargo test` passes (all 6 unit tests)
+- [ ] `cargo test` passes (unit and integration tests)
 - [ ] `cargo build --release` succeeds
 - [ ] Console binary runs without crash: `./target/release/game-of-life`
 
 ## What Can Be Changed
 
 ✅ **Safe to modify:**
-- Core algorithm in `src/lib.rs` (Board, CellState, generation logic)
+- Core algorithm in `src/board.rs` (Board, CellState, generation logic)
+- Configuration model and parsing in `src/config.rs`
 - Console app pattern, output format, or iterations in `src/main.rs`
-- Test cases and helpers in `src/lib.rs` `#[cfg(test)]` section
+- Integration tests and helpers in `tests/`
 - Documentation in `docs/` and README
 - CI workflow in `.github/workflows/ci.yml`
 
@@ -38,11 +39,12 @@ Every change must satisfy:
 
 ### Add a Test
 
-1. Write an ASCII grid helper (see `board_from_grid` in `src/lib.rs`)
-2. Create `#[test]` function with descriptive name
+1. Choose the matching integration test file under `tests/`
+2. Write or reuse an ASCII grid helper for board scenarios
 3. Use grid patterns with `#` = Alive, `.` = Dead
-4. Assert board state after generation
-5. Run `cargo test` to verify
+4. Prefix valid boundary tests with `edge_case_`
+5. Prefix invalid input or error-message tests with `negative_`
+6. Run `cargo test` to verify
 
 **Example:**
 ```rust
@@ -78,7 +80,7 @@ If profiling shows `advance_generation()` is a bottleneck:
 
 ### Extend Console App
 
-Current: 5×5 blinker, 10 generations, hardcoded.
+Current: configurable board size and max iterations with defaults of 5×5 and 10 generations. The initial pattern is a deterministic blinker.
 
 Future enhancements (if requested):
 - Accept pattern from file or stdin
@@ -125,11 +127,18 @@ cargo build --release
 
 | File | Purpose |
 |------|---------|
-| `src/lib.rs` | Core library: Board, CellState, generation, tests |
-| `src/main.rs` | Console app: 5×5 blinker demo |
+| `src/board.rs` | Board, CellState, display, and generation logic |
+| `src/config.rs` | SimulationConfig, BoardSize, CLI/config parsing, and typed errors |
+| `src/lib.rs` | Library module declarations and public re-exports |
+| `src/main.rs` | Console app and process-level CLI behavior |
+| `tests/board_tests.rs` | Board API and generation behavior tests |
+| `tests/config_tests.rs` | Configuration and parser tests |
+| `tests/cli_tests.rs` | End-to-end binary CLI tests |
 | `Cargo.toml` | Project manifest |
 | `.github/workflows/ci.yml` | CI: repository hygiene, format, lint, test, build, smoke test |
 | `docs/design.md` | Full design rationale and tradeoffs |
+| `docs/product-code.md` | Product module maintenance guidance |
+| `docs/testing.md` | Test organization and labeling guidance |
 | `docs/architecture.excalidraw` | Flow diagram of algorithm |
 | `.github/copilot-instructions.md` | Detailed Copilot guidance |
 | `AGENTS.md` | This file |

@@ -12,8 +12,14 @@ This document provides guidance for GitHub Copilot when working on the Rust Game
 
 ```
 src/
-  lib.rs          Library with Board, CellState, generation logic, and tests
-  main.rs         Console application (5x5 blinker demo)
+  board.rs        Board, CellState, display, and generation logic
+  config.rs       SimulationConfig, BoardSize, CLI/config parsing, and typed errors
+  lib.rs          Library module declarations and public re-exports
+  main.rs         Console application and process-level CLI behavior
+tests/
+  board_tests.rs  Board API and generation behavior tests
+  config_tests.rs Configuration and parser tests
+  cli_tests.rs    End-to-end binary CLI tests
 Cargo.toml        Project manifest with library + binary targets
 .github/
   workflows/
@@ -21,6 +27,8 @@ Cargo.toml        Project manifest with library + binary targets
   copilot-instructions.md  This file
 docs/
   design.md       Full design rationale and architecture notes
+  product-code.md Product module maintenance guidance
+  testing.md      Test organization and labeling guidance
   architecture.excalidraw  Flow diagram of board/generation algorithm
 ```
 
@@ -28,7 +36,7 @@ docs/
 
 - **Edition**: 2021
 - **Dependencies**: Zero external crates (std library only)
-- **Testing**: Built-in `#[cfg(test)]` framework with ASCII grid helpers
+- **Testing**: Cargo integration tests under `tests/` with ASCII grid helpers
 - **Code Style**: Enforced by `cargo fmt` and `cargo clippy`
 
 ## Key Design Decisions
@@ -46,15 +54,18 @@ docs/
    - Simpler deployment
    - Easier to review and extend
 
-4. **Console Application**: Hardcoded 5×5 blinker pattern for deterministic output
+4. **Console Application**: Configurable board size and max iterations with deterministic defaults
    - Ideal for smoke testing in CI
-   - Ready to accept user input or patterns as future enhancement
+   - Prints concise run information and the final board state only
+   - Ready to accept user input patterns as future enhancement
 
 ## Development Workflow
 
 ### Adding a New Test
 
-Create an ASCII grid helper in `src/lib.rs`:
+Add tests under the matching integration test file in `tests/`. Use `tests/board_tests.rs` for board behavior, `tests/config_tests.rs` for configuration parsing, and `tests/cli_tests.rs` for end-to-end binary behavior. Prefix valid boundary tests with `edge_case_` and invalid input or error-message tests with `negative_`.
+
+Create an ASCII grid helper in the relevant test file when needed:
 
 ```rust
 fn board_from_grid(lines: &[&str]) -> Board {
@@ -93,11 +104,10 @@ When changing `Board::advance_generation()`:
 
 ### Extending Console App
 
-Current pattern is a 5×5 blinker (hardcoded). To add features:
+Current pattern is a deterministic blinker. Board size and max iterations are configurable from the CLI. To add features:
 - **Pattern generation**: Refactor into helper functions or patterns module
-- **Board size**: Make `WIDTH` and `HEIGHT` configurable
-- **Iteration count**: Add command-line argument parsing
 - **File input**: Consider pattern file format (RLE, plaintext)
+- **Output modes**: Add an explicit option before reintroducing per-generation board output
 
 When modifying `main.rs`, ensure the binary still builds and runs deterministically for CI.
 
@@ -109,6 +119,8 @@ Every feature must have corresponding tests:
 - **Edge semantics**: Out-of-bounds neighbors are dead
 - **Transitional states**: Never remain after generation completes
 - **Neighbor counting**: During mark pass, treats Alive/Dying as live
+- **Negative tests**: Invalid inputs have actionable error messages
+- **Edge-case tests**: Valid boundary behavior is labeled with `edge_case_`
 
 All tests must use readable ASCII grids with `#` for alive, `.` for dead.
 
@@ -121,7 +133,7 @@ Workflow: `.github/workflows/ci.yml`
 **Checks**:
 1. `cargo fmt --check` – Format verification
 2. `cargo clippy --all-targets -- -D warnings` – Lints as errors
-3. `cargo test --verbose` – Unit tests
+3. `cargo test --verbose` – Unit and integration tests
 4. `cargo build --release` – Production build
 5. Console binary smoke test – Runs built binary and verifies no crashes
 
@@ -154,9 +166,9 @@ Update docs when:
 
 ## Known Limitations
 
-1. **Board size**: Hardcoded in console app (5×5). Future enhancement: make configurable.
-2. **Patterns**: Only blinker in console app. Future: pattern library or file input.
-3. **Interactivity**: No step-through or interactive mode. Future: add if needed.
+1. **Patterns**: Only blinker in console app. Future: pattern library or file input.
+2. **Interactivity**: No step-through or interactive mode. Future: add if needed.
+3. **Per-generation output**: Not printed by default. Future: add explicit output mode if needed.
 
 ## Extending to C++ (Sibling Branch)
 
@@ -187,5 +199,6 @@ Do not merge or cross-pollinate between branches unless explicitly directed.
 
 Refer to:
 - `docs/design.md` for architectural decisions
-- `src/lib.rs` for implementation details and test examples
+- `src/board.rs` and `src/config.rs` for implementation details
+- `docs/product-code.md` and `docs/testing.md` for maintenance guidance
 - `README.md` for build and run commands

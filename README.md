@@ -35,6 +35,12 @@ cargo build --release
 
 # Run console application
 .\target\release\game-of-life.exe
+
+# Show CLI options
+.\target\release\game-of-life.exe --help
+
+# Run with a 10x10 board for 25 generations
+.\target\release\game-of-life.exe --board-size 10x10 --max-iterations 25
 ```
 
 ### Build and Run (Linux / WSL)
@@ -52,7 +58,23 @@ cargo build --release
 
 # Run console application
 ./target/release/game-of-life
+
+# Show CLI options
+./target/release/game-of-life --help
+
+# Run with a 10x10 board for 25 generations
+./target/release/game-of-life --board-size 10x10 --max-iterations 25
 ```
+
+The console app prints concise run information and the final board state only. Per-generation board output is intentionally omitted for now to keep runs readable.
+
+### Command-line options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-h`, `--help` | Print usage and supported options. | N/A |
+| `-b`, `--board-size <WIDTHxHEIGHT>` | Set the bounded 2D board size, such as `5x5` or `10x20`. | `5x5` |
+| `-m`, `--max-iterations <COUNT>` | Set how many generations to run. Use `0` to print the initial board as the final state. | `10` |
 
 ### Algorithm Overview
 
@@ -79,3 +101,7 @@ For each generation:
 2. Add a small board representation.
 3. Implement generation advancement.
 4. Add tests for stable, oscillator, and edge-case patterns.
+
+## Maintenance guidance
+
+See [docs/product-code.md](docs/product-code.md) for product module conventions and [docs/testing.md](docs/testing.md) for test organization, `edge_case_` labels, and `negative_` labels.
