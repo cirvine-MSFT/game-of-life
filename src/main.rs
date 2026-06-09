@@ -50,6 +50,7 @@ fn run_simulation(config: SimulationConfig) {
     println!("Game of Life");
     println!("Board size: {}", config.board_size);
     println!("Max iterations: {}", config.max_iterations);
+    println!("Generation 0: fixed initial state seeded");
     println!("Final board state:");
     print!("{board}");
     println!("Simulation complete: {} iterations", config.max_iterations);
