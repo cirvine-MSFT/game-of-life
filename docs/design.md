@@ -57,35 +57,44 @@ Alive ──[<2 or >3 neighbors]──→ Dying ──[normalize]──→ Dead
 
 ## Console Application Design
 
-**Pattern**: Horizontal blinker (3 cells in a row) at the center of a 5×5 board
+**Pattern**: Horizontal blinker (3 cells in a row) centered on the configured board when possible.
 
 **Output**:
-- Shows initial state (generation 0)
-- Advances and prints each generation (0-10)
+- Shows concise run information
+- Advances to the configured maximum iteration count
+- Prints the final board state only
 - Uses ASCII characters (`#` for alive, `.` for dead) for platform-neutral console output
 
-**Determinism**: The pattern and iteration count are hardcoded, ensuring consistent output for smoke tests
+**Determinism**: The initial pattern and default configuration are deterministic, ensuring consistent output for smoke tests.
 
 **Extensibility**: The design is ready for:
 - User input patterns
 - Variable board sizes
-- Interactive or step-through modes
 - Configurable iteration counts
+- Optional per-generation, interactive, or step-through output modes
 
 ## Rust/Cargo Project Structure
 
 ```
 src/
-  lib.rs       - Core Game of Life library (Board, CellState, generation logic)
+  board.rs     - Board, CellState, display, and generation logic
+  config.rs    - SimulationConfig, BoardSize, and CLI/config parsing
+  lib.rs       - Public module declarations and re-exports
   main.rs      - Console application binary
+tests/
+  board_tests.rs   - Board API and Game of Life behavior
+  config_tests.rs  - Configuration and parser behavior
+  cli_tests.rs     - End-to-end binary behavior
 Cargo.toml     - Project manifest with library and binary targets
 ```
 
 **Libraries Used**: None (no external dependencies for core logic)
 
-**Testing**: Built-in Rust test framework
-- Tests cover still-life, oscillators, edge cases, and state transitions
-- Grid-based test construction for readability
+**Testing**: Cargo integration tests under `tests/`
+- Tests cover still-life, oscillators, edge cases, negative parser cases, CLI behavior, and state transitions
+- Grid-based test construction keeps board expectations readable
+- `edge_case_` labels identify valid boundary behavior
+- `negative_` labels identify invalid input and actionable error-message behavior
 
 ## Cross-Platform Considerations
 
@@ -140,6 +149,7 @@ Cargo.toml     - Project manifest with library and binary targets
 | No external dependencies | Lightweight, portable | Must implement everything from scratch |
 | Hardcoded console pattern | Deterministic, easy to test | Less flexible for exploration |
 | ASCII console output | Portable across Windows, Linux, and CI logs | Less visually rich than Unicode output |
+| Final-state-only default output | Keeps CLI runs readable | Requires a future option for generation-by-generation viewing |
 
 ## Future Enhancements
 
