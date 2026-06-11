@@ -18,7 +18,7 @@ This repository is intentionally runtime-neutral for now. The first implementati
 
 ## Rust Prototype Implementation
 
-The Rust implementation uses a bounded board with transitional cell states and a two-pass generation algorithm. See [docs/design.md](docs/design.md) for detailed design rationale and [docs/decision-rust.md](docs/decision-rust.md) for the language choice record.
+The Rust implementation uses a bounded board with trait-based initialization and update algorithms. The default update algorithm uses transitional cell states and a two-pass generation flow. See [docs/design.md](docs/design.md) for detailed design rationale and [docs/decision-rust.md](docs/decision-rust.md) for the language choice record.
 
 ### Build and Run (Windows)
 
@@ -78,13 +78,23 @@ The console app prints concise run information and the final board state only. P
 
 ### Algorithm Overview
 
-- **Board**: Finite, bounded (out-of-bounds neighbors are dead; no toroidal wrapping)
+- **Board Implementation**: `InMemoryBoard` is the current finite, bounded board implementation (out-of-bounds neighbors are dead; no toroidal wrapping)
+- **Board Access Traits**: Algorithms use fallible `BoardView`/`BoardEditor` traits instead of concrete board storage, including grouped coordinate reads for custom neighborhoods or future storage batching
+- **Initialization Interface**: `BoardInitializer` is the trait for seeding a board; concrete implementations include `CenteredBlinkerInitializer` and seedable `RandomBoardInitializer`
+- **Update Interface**: `BoardUpdater` advances a board; the default is `InPlaceTransitionalUpdater`
 - **Cell States**: Dead, Alive, Dying, Resurrecting (transitional states enable single-board generation)
-- **Generation Advancement**:
+- **Default Generation Advancement**:
   1. **Mark Pass**: Compute each cell's next state using transitional states
   2. **Normalize Pass**: Convert Dying → Dead and Resurrecting → Alive
 - **Neighbor Counting**: Alive and Dying treated as originally live; Dead and Resurrecting treated as originally dead
 - **Result**: After generation, board contains only Dead and Alive states
+- **Configuration**: CLI selection of alternate algorithms is intentionally deferred; current CLI behavior remains deterministic
+
+### Architecture diagram
+
+![Game of Life architecture and algorithm flow](docs/architecture.png)
+
+Editable source: [docs/architecture.excalidraw](docs/architecture.excalidraw)
 
 ## Conway's Game of Life rules
 

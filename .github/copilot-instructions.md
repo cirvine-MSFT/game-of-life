@@ -12,7 +12,7 @@ This document provides guidance for GitHub Copilot when working on the Rust Game
 
 ```
 src/
-  board.rs        Board, CellState, display, and generation logic
+  board/          Board traits, CellState, InMemoryBoard, display, and generation convenience
   config.rs       SimulationConfig, BoardSize, CLI/config parsing, and typed errors
   lib.rs          Library module declarations and public re-exports
   main.rs         Console application and process-level CLI behavior
@@ -68,10 +68,10 @@ Add tests under the matching integration test file in `tests/`. Use `tests/board
 Create an ASCII grid helper in the relevant test file when needed:
 
 ```rust
-fn board_from_grid(lines: &[&str]) -> Board {
+fn board_from_grid(lines: &[&str]) -> InMemoryBoard {
     let height = lines.len();
     let width = if height > 0 { lines[0].len() } else { 0 };
-    let mut board = Board::new(width, height);
+    let mut board = InMemoryBoard::new(width, height);
     for (y, line) in lines.iter().enumerate() {
         for (x, ch) in line.chars().enumerate() {
             let state = match ch {
@@ -96,7 +96,7 @@ fn test_my_pattern() {
 
 ### Modifying Board Logic
 
-When changing `Board::advance_generation()`:
+When changing `InMemoryBoard::advance_generation()`:
 1. Run full test suite: `cargo test`
 2. Check lints: `cargo clippy --all-targets -- -D warnings`
 3. Format: `cargo fmt`
@@ -188,7 +188,7 @@ Do not merge or cross-pollinate between branches unless explicitly directed.
 
 ### Runtime Crashes
 - Run `cargo miri` if available (detects UB, though not all issues)
-- Check bounds in `Board::get()` and `Board::set()` for off-by-one errors
+- Check bounds in `InMemoryBoard::get()` and `InMemoryBoard::set()` for off-by-one errors
 - Ensure `advance_generation()` handles edge cells correctly
 
 ### Performance Issues
@@ -199,6 +199,6 @@ Do not merge or cross-pollinate between branches unless explicitly directed.
 
 Refer to:
 - `docs/design.md` for architectural decisions
-- `src/board.rs` and `src/config.rs` for implementation details
+- `src/board/`, `src/algorithms/`, and `src/config.rs` for implementation details
 - `docs/product-code.md` and `docs/testing.md` for maintenance guidance
 - `README.md` for build and run commands

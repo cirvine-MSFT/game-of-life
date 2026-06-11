@@ -46,6 +46,18 @@ mod normal_tests {
         assert!(stdout.contains("Simulation complete: 1 iterations"));
         assert!(!stdout.contains("Generation 1:"));
     }
+
+    #[test]
+    fn zero_iteration_run_uses_default_centered_blinker_initializer() {
+        let output = run_cli(&["--max-iterations", "0"]);
+
+        assert!(output.status.success());
+        assert!(stderr(&output).is_empty());
+
+        let stdout = stdout(&output);
+        assert!(stdout.contains("Board size: 5x5"));
+        assert!(stdout.contains("Final board state:\n.....\n.....\n.###.\n.....\n.....\n"));
+    }
 }
 
 mod edge_case_tests {

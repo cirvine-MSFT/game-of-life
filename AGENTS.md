@@ -23,7 +23,8 @@ Every change must satisfy:
 ## What Can Be Changed
 
 ✅ **Safe to modify:**
-- Core algorithm in `src/board.rs` (Board, CellState, generation logic)
+- Board interfaces and implementation in `src/board/` (BoardView, BoardEditor, InMemoryBoard, CellState)
+- Core update algorithms in `src/algorithms/`
 - Configuration model and parsing in `src/config.rs`
 - Console app pattern, output format, or iterations in `src/main.rs`
 - Integration tests and helpers in `tests/`
@@ -65,7 +66,7 @@ fn test_beacon_pattern() {
 1. Identify failing test in `cargo test` output
 2. Run just that test: `RUST_BACKTRACE=full cargo test test_name -- --nocapture`
 3. Add `println!("{}", board)` statements to see state at each step
-4. Review generation logic in `Board::advance_generation()` and `count_live_neighbors()`
+4. Review generation logic in `InMemoryBoard::advance_generation()` and the active updater implementation
 5. Verify neighbor counting treats Alive/Dying as "originally live"
 
 ### Optimize Generation Performance
@@ -127,7 +128,8 @@ cargo build --release
 
 | File | Purpose |
 |------|---------|
-| `src/board.rs` | Board, CellState, display, and generation logic |
+| `src/board/` | Board traits, CellState, InMemoryBoard, display, and generation convenience |
+| `src/algorithms/` | BoardInitializer, BoardUpdater, and concrete initializer/update implementations |
 | `src/config.rs` | SimulationConfig, BoardSize, CLI/config parsing, and typed errors |
 | `src/lib.rs` | Library module declarations and public re-exports |
 | `src/main.rs` | Console app and process-level CLI behavior |

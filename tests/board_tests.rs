@@ -1,9 +1,9 @@
-use game_of_life::{Board, CellState};
+use game_of_life::{CellState, InMemoryBoard};
 
-fn board_from_grid(lines: &[&str]) -> Board {
+fn board_from_grid(lines: &[&str]) -> InMemoryBoard {
     let height = lines.len();
     let width = if height > 0 { lines[0].len() } else { 0 };
-    let mut board = Board::new(width, height);
+    let mut board = InMemoryBoard::new(width, height);
 
     for (y, line) in lines.iter().enumerate() {
         for (x, ch) in line.chars().enumerate() {
