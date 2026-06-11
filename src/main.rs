@@ -9,9 +9,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, process};
 
 use game_of_life::{
-    parse_cli_args, BoardInitializer, BoardUpdater, CenteredBlinkerInitializer, CliCommand,
-    DemoBoardInitializer, InMemoryBoard, InMemoryBoardCreationError, InPlaceTransitionalUpdater,
-    InitialBoardSource, RandomBoardInitializer, SimulationConfig,
+    parse_cli_args, BlinkerBoardInitializer, BoardInitializer, BoardUpdater, CliCommand,
+    DemoBoardInitializer, FullyAliveInitializer, InMemoryBoard, InMemoryBoardCreationError,
+    InPlaceTransitionalUpdater, InitialBoardSource, RandomBoardInitializer, SimulationConfig,
 };
 
 const HELP_TEXT: &str = concat!(
@@ -25,7 +25,7 @@ const HELP_TEXT: &str = concat!(
     "  -b, --board-size <WIDTHxHEIGHT>    Set the 2D board size, for example 5x5.\n",
     "  -m, --max-iterations <COUNT>       Set generations to run; 0 prints the initial board.\n",
     "      --max-board-memory <SIZE>      Set max in-memory board budget, for example 64MB.\n",
-    "      --initial-board <SOURCE>       Set initial board source: demo, blinker, or random.\n",
+    "      --initial-board <SOURCE>       Set initial board source: demo, alive, blinker, or random.\n",
     "\n",
     "Defaults:\n",
     "  --board-size 10x10\n",
@@ -89,7 +89,10 @@ fn initialize_board(source: InitialBoardSource, board: &mut InMemoryBoard) {
         InitialBoardSource::Demo => DemoBoardInitializer
             .initialize(board)
             .expect("in-memory board initialization is infallible"),
-        InitialBoardSource::Blinker => CenteredBlinkerInitializer
+        InitialBoardSource::Alive => FullyAliveInitializer
+            .initialize(board)
+            .expect("in-memory board initialization is infallible"),
+        InitialBoardSource::Blinker => BlinkerBoardInitializer
             .initialize(board)
             .expect("in-memory board initialization is infallible"),
         InitialBoardSource::Random => RandomBoardInitializer::new(generate_random_seed())

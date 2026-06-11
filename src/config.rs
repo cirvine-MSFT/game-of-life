@@ -96,16 +96,18 @@ impl Default for SimulationConfig {
 pub enum InitialBoardSource {
     #[default]
     Demo,
+    Alive,
     Blinker,
     Random,
 }
 
 impl InitialBoardSource {
-    pub const SUPPORTED_VALUES: &'static str = "demo, blinker, random";
+    pub const SUPPORTED_VALUES: &'static str = "demo, alive, blinker, random";
 
     pub fn parse(value: &str) -> Result<Self, InitialBoardSourceParseError> {
         match value.trim() {
             "demo" => Ok(Self::Demo),
+            "alive" => Ok(Self::Alive),
             "blinker" => Ok(Self::Blinker),
             "random" => Ok(Self::Random),
             _ => Err(InitialBoardSourceParseError::Unsupported {
@@ -119,6 +121,7 @@ impl fmt::Display for InitialBoardSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
             InitialBoardSource::Demo => "demo",
+            InitialBoardSource::Alive => "alive",
             InitialBoardSource::Blinker => "blinker",
             InitialBoardSource::Random => "random",
         };
@@ -274,7 +277,7 @@ where
         if arg == "--initial-board" {
             let value = args.next().ok_or_else(|| ConfigError::MissingOptionValue {
                 option: arg.clone(),
-                expected: "an initial board source like demo, blinker, or random",
+                expected: "an initial board source like demo, alive, blinker, or random",
             })?;
             config.initial_board =
                 InitialBoardSource::parse(&value).map_err(ConfigError::InvalidInitialBoard)?;

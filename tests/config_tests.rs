@@ -163,6 +163,10 @@ mod edge_case_tests {
             Ok(InitialBoardSource::Demo)
         );
         assert_eq!(
+            InitialBoardSource::parse("alive"),
+            Ok(InitialBoardSource::Alive)
+        );
+        assert_eq!(
             InitialBoardSource::parse("blinker"),
             Ok(InitialBoardSource::Blinker)
         );
@@ -477,7 +481,7 @@ mod negative_tests {
                 value: "file:seed.txt".to_string()
             })
         );
-        assert!(error.to_string().contains("demo, blinker, random"));
+        assert!(error.to_string().contains("demo, alive, blinker, random"));
         assert!(error.to_string().contains("planned"));
     }
 

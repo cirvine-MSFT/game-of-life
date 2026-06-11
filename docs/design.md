@@ -30,6 +30,8 @@ The core algorithm-facing traits are:
 The current concrete defaults are:
 
 - `DemoBoardInitializer`: seeds the deterministic product/UI demo pattern used by the console app by default
+- `FullyAliveInitializer`: seeds every in-bounds cell as alive
+- `BlinkerBoardInitializer`: seeds the deterministic centered horizontal blinker used by `--initial-board blinker`
 - `CenteredBlinkerInitializer`: seeds a deterministic centered horizontal blinker for oscillator demos and tests
 - `RandomBoardInitializer`: fills every cell from a seedable pseudo-random sequence, using an alive-cells-per-thousand density for reproducible experiments
 - `InPlaceTransitionalUpdater`: applies Conway's rules using the existing single-buffer, two-pass transitional-state algorithm
@@ -123,11 +125,14 @@ The console app now uses the algorithm abstractions internally:
 1. Create an `InMemoryBoard`
 2. Apply the selected initial board source:
    - `demo` -> `DemoBoardInitializer`
-   - `blinker` -> `CenteredBlinkerInitializer`
+   - `alive` -> `FullyAliveInitializer`
+   - `blinker` -> `BlinkerBoardInitializer`
    - `random` -> `RandomBoardInitializer` with a fresh runtime-generated seed
 3. Advance with `InPlaceTransitionalUpdater` for the configured iteration count
 
-The CLI option `--initial-board <demo|blinker|random>` selects the source of the initial board. The source-oriented name leaves room for future values such as `file:<PATH>` without exposing Rust trait names in the command-line interface.
+The CLI option `--initial-board <demo|alive|blinker|random>` selects the source of the initial board. The source-oriented name leaves room for future values such as `file:<PATH>` without exposing Rust trait names in the command-line interface.
+
+The fully alive source is useful for exercising overpopulation behavior, but it is not a rich long-running demo: boards larger than `2x2` usually collapse to corner cells after one generation and then die; a `2x2` fully alive board is the standard stable block.
 
 **Output**:
 - Shows concise run information

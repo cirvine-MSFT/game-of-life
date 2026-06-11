@@ -11,9 +11,10 @@ pub mod board;
 pub mod config;
 
 pub use algorithms::{
-    BoardInitializer, BoardUpdater, CenteredBlinkerInitializer, DemoBoardInitializer,
-    InPlaceTransitionalUpdater, RandomBoardInitializer, RandomBoardInitializerError,
-    DEFAULT_ALIVE_CELLS_PER_THOUSAND, MAX_ALIVE_CELLS_PER_THOUSAND,
+    BlinkerBoardInitializer, BoardInitializer, BoardUpdater, CenteredBlinkerInitializer,
+    DemoBoardInitializer, FullyAliveInitializer, InPlaceTransitionalUpdater,
+    RandomBoardInitializer, RandomBoardInitializerError, DEFAULT_ALIVE_CELLS_PER_THOUSAND,
+    MAX_ALIVE_CELLS_PER_THOUSAND,
 };
 pub use board::{
     BoardEditor, BoardView, CellCoordinate, CellState, InMemoryBoard, InMemoryBoardCreationError,

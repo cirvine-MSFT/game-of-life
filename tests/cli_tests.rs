@@ -85,6 +85,44 @@ mod normal_tests {
     }
 
     #[test]
+    fn selected_alive_initial_board_is_used() {
+        let output = run_cli(&[
+            "--board-size",
+            "3x2",
+            "--max-iterations",
+            "0",
+            "--initial-board",
+            "alive",
+        ]);
+
+        assert!(output.status.success());
+        assert!(stderr(&output).is_empty());
+
+        let stdout = stdout(&output);
+        assert!(stdout.contains("Initial board: alive"));
+        assert!(stdout.contains("Final board state:\n###\n###\n"));
+    }
+
+    #[test]
+    fn alive_initial_board_larger_than_two_by_two_dies_quickly() {
+        let output = run_cli(&[
+            "--board-size",
+            "4x4",
+            "--max-iterations",
+            "2",
+            "--initial-board",
+            "alive",
+        ]);
+
+        assert!(output.status.success());
+        assert!(stderr(&output).is_empty());
+
+        let stdout = stdout(&output);
+        assert!(stdout.contains("Initial board: alive"));
+        assert!(stdout.contains("Final board state:\n....\n....\n....\n....\n"));
+    }
+
+    #[test]
     fn selected_random_initial_board_runs_successfully() {
         let output = run_cli(&[
             "--board-size",
@@ -217,7 +255,7 @@ mod negative_tests {
         assert!(stdout(&output).is_empty());
 
         let stderr = stderr(&output);
-        assert!(stderr.contains("demo, blinker, random"));
+        assert!(stderr.contains("demo, alive, blinker, random"));
         assert!(stderr.contains("planned"));
         assert!(stderr.contains("--help"));
     }

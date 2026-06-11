@@ -1,7 +1,8 @@
 use game_of_life::{
-    BoardEditor, BoardInitializer, BoardUpdater, BoardView, CellCoordinate, CellState,
-    CenteredBlinkerInitializer, DemoBoardInitializer, InMemoryBoard, InPlaceTransitionalUpdater,
-    RandomBoardInitializer, RandomBoardInitializerError,
+    BlinkerBoardInitializer, BoardEditor, BoardInitializer, BoardUpdater, BoardView,
+    CellCoordinate, CellState, CenteredBlinkerInitializer, DemoBoardInitializer,
+    FullyAliveInitializer, InMemoryBoard, InPlaceTransitionalUpdater, RandomBoardInitializer,
+    RandomBoardInitializerError,
 };
 use std::convert::Infallible;
 
@@ -66,6 +67,60 @@ mod normal_tests {
 
         let expected = board_from_grid(&[".....", ".....", ".###.", ".....", "....."]);
         assert_eq!(board, expected);
+    }
+
+    #[test]
+    fn blinker_board_initializer_seeds_middle_row() {
+        let mut board = InMemoryBoard::new(5, 5);
+
+        BlinkerBoardInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        let expected = board_from_grid(&[".....", ".....", ".###.", ".....", "....."]);
+        assert_eq!(board, expected);
+    }
+
+    #[test]
+    fn fully_alive_initializer_seeds_every_cell() {
+        let mut board = InMemoryBoard::new(3, 2);
+
+        FullyAliveInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        let expected = board_from_grid(&["###", "###"]);
+        assert_eq!(board, expected);
+    }
+
+    #[test]
+    fn fully_alive_board_larger_than_two_by_two_dies_quickly() {
+        let mut board = InMemoryBoard::new(4, 4);
+
+        FullyAliveInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+        board.advance_generation();
+        let expected_after_one = board_from_grid(&["#..#", "....", "....", "#..#"]);
+        assert_eq!(board, expected_after_one);
+
+        board.advance_generation();
+        let expected_after_two = board_from_grid(&["....", "....", "....", "...."]);
+        assert_eq!(board, expected_after_two);
+    }
+
+    #[test]
+    fn fully_alive_two_by_two_board_is_stable() {
+        let mut board = InMemoryBoard::new(2, 2);
+
+        FullyAliveInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+        let initial = board.clone();
+
+        board.advance_generation();
+
+        assert_eq!(board, initial);
     }
 
     #[test]
