@@ -3,12 +3,15 @@
 //! Runs a configured initial board for a configured number of generations
 //! and prints the final board state as ASCII.
 
+use std::collections::hash_map::RandomState;
+use std::hash::{BuildHasher, Hasher};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, process};
 
 use game_of_life::{
     parse_cli_args, BoardInitializer, BoardUpdater, CenteredBlinkerInitializer, CliCommand,
     DemoBoardInitializer, InMemoryBoard, InMemoryBoardCreationError, InPlaceTransitionalUpdater,
-    InitialBoardSource, RandomBoardInitializer, SimulationConfig, DEFAULT_RANDOM_SEED,
+    InitialBoardSource, RandomBoardInitializer, SimulationConfig,
 };
 
 const HELP_TEXT: &str = concat!(
@@ -89,10 +92,22 @@ fn initialize_board(source: InitialBoardSource, board: &mut InMemoryBoard) {
         InitialBoardSource::Blinker => CenteredBlinkerInitializer
             .initialize(board)
             .expect("in-memory board initialization is infallible"),
-        InitialBoardSource::Random => RandomBoardInitializer::new(DEFAULT_RANDOM_SEED)
+        InitialBoardSource::Random => RandomBoardInitializer::new(generate_random_seed())
             .initialize(board)
             .expect("in-memory board initialization is infallible"),
     }
+}
+
+fn generate_random_seed() -> u64 {
+    let mut hasher = RandomState::new().build_hasher();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+
+    hasher.write_u128(now);
+    hasher.write_u32(process::id());
+    hasher.finish()
 }
 
 fn print_help() {

@@ -91,7 +91,7 @@ The console app prints concise run information and the final board state only. P
   2. **Normalize Pass**: Convert Dying → Dead and Resurrecting → Alive
 - **Neighbor Counting**: Alive and Dying treated as originally live; Dead and Resurrecting treated as originally dead
 - **Result**: After generation, board contains only Dead and Alive states
-- **Configuration**: CLI options select board size, iteration count, memory budget, and initial board source while keeping deterministic defaults
+- **Configuration**: CLI options select board size, iteration count, memory budget, and initial board source; `demo` remains deterministic while `random` generates a fresh random board each run
 
 ### Architecture diagram
 

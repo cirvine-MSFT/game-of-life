@@ -122,7 +122,7 @@ The console app now uses the algorithm abstractions internally:
 2. Apply the selected initial board source:
    - `demo` -> `DemoBoardInitializer`
    - `blinker` -> `CenteredBlinkerInitializer`
-   - `random` -> `RandomBoardInitializer` with deterministic defaults
+   - `random` -> `RandomBoardInitializer` with a fresh runtime-generated seed
 3. Advance with `InPlaceTransitionalUpdater` for the configured iteration count
 
 The CLI option `--initial-board <demo|blinker|random>` selects the source of the initial board. The source-oriented name leaves room for future values such as `file:<PATH>` without exposing Rust trait names in the command-line interface.
@@ -133,7 +133,7 @@ The CLI option `--initial-board <demo|blinker|random>` selects the source of the
 - Prints the final board state only
 - Uses ASCII characters (`#` for alive, `.` for dead) for platform-neutral console output
 
-**Determinism**: The default demo pattern, blinker pattern, and random initializer defaults are deterministic, ensuring consistent output for smoke tests.
+**Determinism**: The default demo and blinker patterns are deterministic, ensuring consistent smoke-test output. The `random` source intentionally generates a fresh random board each run; future save/resume work should persist the generated initial state when reproducibility is needed.
 
 **Extensibility**: The design is ready for:
 - File-based initial board patterns

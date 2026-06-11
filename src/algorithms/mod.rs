@@ -14,5 +14,5 @@ pub use demo_board_initializer::DemoBoardInitializer;
 pub use in_place_transitional_updater::InPlaceTransitionalUpdater;
 pub use random_board_initializer::{
     RandomBoardInitializer, RandomBoardInitializerError, DEFAULT_ALIVE_CELLS_PER_THOUSAND,
-    DEFAULT_RANDOM_SEED, MAX_ALIVE_CELLS_PER_THOUSAND,
+    MAX_ALIVE_CELLS_PER_THOUSAND,
 };

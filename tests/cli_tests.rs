@@ -85,16 +85,8 @@ mod normal_tests {
     }
 
     #[test]
-    fn selected_random_initial_board_is_deterministic() {
-        let first = run_cli(&[
-            "--board-size",
-            "3x3",
-            "--max-iterations",
-            "0",
-            "--initial-board",
-            "random",
-        ]);
-        let second = run_cli(&[
+    fn selected_random_initial_board_runs_successfully() {
+        let output = run_cli(&[
             "--board-size",
             "3x3",
             "--max-iterations",
@@ -103,9 +95,12 @@ mod normal_tests {
             "random",
         ]);
 
-        assert!(first.status.success());
-        assert!(second.status.success());
-        assert_eq!(stdout(&first), stdout(&second));
+        assert!(output.status.success());
+        assert!(stderr(&output).is_empty());
+
+        let stdout = stdout(&output);
+        assert!(stdout.contains("Initial board: random"));
+        assert!(stdout.contains("Final board state:"));
     }
 }
 
