@@ -24,6 +24,35 @@ fn board_from_grid(lines: &[&str]) -> InMemoryBoard {
     board
 }
 
+fn assert_stabilizes_within(mut board: InMemoryBoard, max_generations: usize) {
+    for generation in 1..=max_generations {
+        let before = board.clone();
+        board.advance_generation();
+
+        if board == before {
+            assert!(
+                generation <= max_generations,
+                "pattern should stabilize within {max_generations} generations"
+            );
+            return;
+        }
+    }
+
+    panic!("pattern did not stabilize within {max_generations} generations");
+}
+
+fn live_cell_count(board: &InMemoryBoard) -> usize {
+    let mut count = 0;
+    for y in 0..board.height() {
+        for x in 0..board.width() {
+            if board.get(x, y) == CellState::Alive {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
 mod normal_tests {
     use super::*;
 
@@ -48,16 +77,16 @@ mod normal_tests {
             .expect("in-memory board initialization is infallible");
 
         let expected = board_from_grid(&[
-            ".....#....",
-            ".........#",
-            "...#....#.",
-            ".#..#.....",
+            "..........",
+            "..........",
+            ".....#.#..",
+            "..#.##.#..",
             "......#...",
-            "###...#.#.",
-            "........#.",
-            "........#.",
-            "#....##...",
-            "#......#..",
+            "...##.....",
+            "..##.#....",
+            "...#......",
+            "..........",
+            "..........",
         ]);
         assert_eq!(board, expected);
     }
@@ -88,6 +117,17 @@ mod normal_tests {
         }
 
         panic!("demo pattern did not stabilize within 20 generations");
+    }
+
+    #[test]
+    fn demo_board_initializer_repeats_independent_tiles_on_larger_boards() {
+        let mut board = InMemoryBoard::new(24, 24);
+        DemoBoardInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        assert_eq!(live_cell_count(&board), 52);
+        assert_stabilizes_within(board, 20);
     }
 
     #[test]
@@ -192,6 +232,18 @@ mod edge_case_tests {
             .writes
             .iter()
             .all(|coordinate| coordinate.x < 1 && coordinate.y < 1));
+    }
+
+    #[test]
+    fn edge_case_demo_board_initializer_uses_small_settling_motif_on_small_boards() {
+        let mut board = InMemoryBoard::new(5, 5);
+        DemoBoardInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        let expected = board_from_grid(&[".....", ".##..", ".#...", ".....", "....."]);
+        assert_eq!(board, expected);
+        assert_stabilizes_within(board, 20);
     }
 
     #[test]

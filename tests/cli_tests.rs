@@ -45,7 +45,7 @@ mod normal_tests {
         assert!(stdout.contains("Max iterations: 1"));
         assert!(stdout.contains("Initial board: demo"));
         assert!(stdout.contains("Final board state:"));
-        assert!(stdout.contains("..\n..\n"));
+        assert!(stdout.contains("##\n##\n"));
         assert!(stdout.contains("Simulation complete: 1 iterations"));
         assert!(!stdout.contains("Generation 1:"));
     }
@@ -61,7 +61,7 @@ mod normal_tests {
         assert!(stdout.contains("Board size: 10x10"));
         assert!(stdout.contains("Initial board: demo"));
         assert!(stdout.contains(
-            "Final board state:\n.....#....\n.........#\n...#....#.\n.#..#.....\n......#...\n###...#.#.\n........#.\n........#.\n#....##...\n#......#..\n"
+            "Final board state:\n..........\n..........\n.....#.#..\n..#.##.#..\n......#...\n...##.....\n..##.#....\n...#......\n..........\n..........\n"
         ));
     }
 
@@ -117,7 +117,7 @@ mod edge_case_tests {
         let stdout = stdout(&output);
         assert!(stdout.contains("Board size: 1x1"));
         assert!(stdout.contains("Max iterations: 0"));
-        assert!(stdout.contains("Final board state:\n.\n"));
+        assert!(stdout.contains("Final board state:\n#\n"));
         assert!(!stdout.contains("Generation 1:"));
     }
 }

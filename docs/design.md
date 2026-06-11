@@ -114,7 +114,9 @@ Primitive/addressability limits are not user-overridable. Users can raise the co
 
 ## Console Application Design
 
-**Default initial board**: Curated deterministic demo pattern on a `10x10` board.
+**Default initial board**: Curated deterministic demo pattern that adapts to the configured board size.
+
+The demo initializer uses isolated 10x10 tiles on boards large enough to hold them. Larger boards receive repeated tiles separated by dead gutters so each tile evolves independently and settles within 20 generations. Smaller boards receive compact motifs that stay in bounds and settle quickly.
 
 The console app now uses the algorithm abstractions internally:
 
