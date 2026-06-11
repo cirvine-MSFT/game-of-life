@@ -1,4 +1,4 @@
-use game_of_life::{CellState, InMemoryBoard};
+use game_of_life::{CellState, InMemoryBoard, InMemoryBoardCreationError};
 
 fn board_from_grid(lines: &[&str]) -> InMemoryBoard {
     let height = lines.len();
@@ -81,6 +81,18 @@ mod normal_tests {
             "Transitional states should preserve original neighbor count"
         );
     }
+
+    #[test]
+    fn in_memory_board_try_new_accepts_exact_memory_budget() {
+        let requested_bytes =
+            InMemoryBoard::allocation_bytes(3, 2).expect("small board should fit");
+
+        let board = InMemoryBoard::try_new(3, 2, requested_bytes)
+            .expect("exact memory budget should be accepted");
+
+        assert_eq!(board.width(), 3);
+        assert_eq!(board.height(), 2);
+    }
 }
 
 mod edge_case_tests {
@@ -131,5 +143,62 @@ mod edge_case_tests {
 
         let expected = board_from_grid(&[".", "."]);
         assert_eq!(board, expected, "Out-of-bounds set should not mutate board");
+    }
+}
+
+mod negative_tests {
+    use super::*;
+
+    #[test]
+    fn negative_in_memory_board_try_new_rejects_budget_overage() {
+        let requested_bytes =
+            InMemoryBoard::allocation_bytes(3, 2).expect("small board should fit");
+
+        let error = InMemoryBoard::try_new(3, 2, requested_bytes - 1)
+            .expect_err("memory budget below requested bytes should fail");
+
+        assert_eq!(
+            error,
+            InMemoryBoardCreationError::MemoryBudgetExceeded {
+                width: 3,
+                height: 2,
+                requested_memory_bytes: requested_bytes,
+                max_memory_bytes: requested_bytes - 1,
+            }
+        );
+        assert!(error.to_string().contains("configured max board memory"));
+    }
+
+    #[test]
+    fn negative_in_memory_board_rejects_cell_count_overflow() {
+        let error = InMemoryBoard::try_new(usize::MAX, 2, usize::MAX)
+            .expect_err("cell count overflow should fail");
+
+        assert_eq!(
+            error,
+            InMemoryBoardCreationError::CellCountOverflow {
+                width: usize::MAX,
+                height: 2,
+            }
+        );
+        assert!(error.to_string().contains("width times height"));
+    }
+
+    #[test]
+    fn negative_in_memory_board_rejects_unaddressable_allocation() {
+        let width = isize::MAX as usize + 1;
+        let error = InMemoryBoard::try_new(width, 1, usize::MAX)
+            .expect_err("unaddressable allocation should fail");
+
+        assert_eq!(
+            error,
+            InMemoryBoardCreationError::AllocationAddressSpaceExceeded {
+                width,
+                height: 1,
+                requested_memory_bytes: width,
+                max_addressable_bytes: isize::MAX as usize,
+            }
+        );
+        assert!(error.to_string().contains("addressable allocation limit"));
     }
 }

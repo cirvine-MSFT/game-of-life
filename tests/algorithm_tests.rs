@@ -1,7 +1,7 @@
 use game_of_life::{
     BoardEditor, BoardInitializer, BoardUpdater, BoardView, CellCoordinate, CellState,
-    CenteredBlinkerInitializer, InMemoryBoard, InPlaceTransitionalUpdater, RandomBoardInitializer,
-    RandomBoardInitializerError,
+    CenteredBlinkerInitializer, DemoBoardInitializer, InMemoryBoard, InPlaceTransitionalUpdater,
+    RandomBoardInitializer, RandomBoardInitializerError,
 };
 use std::convert::Infallible;
 
@@ -37,6 +37,57 @@ mod normal_tests {
 
         let expected = board_from_grid(&[".....", ".....", ".###.", ".....", "....."]);
         assert_eq!(board, expected);
+    }
+
+    #[test]
+    fn demo_board_initializer_seeds_curated_ten_by_ten_pattern() {
+        let mut board = InMemoryBoard::new(10, 10);
+
+        DemoBoardInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        let expected = board_from_grid(&[
+            ".....#....",
+            ".........#",
+            "...#....#.",
+            ".#..#.....",
+            "......#...",
+            "###...#.#.",
+            "........#.",
+            "........#.",
+            "#....##...",
+            "#......#..",
+        ]);
+        assert_eq!(board, expected);
+    }
+
+    #[test]
+    fn demo_board_initializer_reaches_stability_within_twenty_generations() {
+        let mut board = InMemoryBoard::new(10, 10);
+        DemoBoardInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        for generation in 1..=20 {
+            let before = board.clone();
+            board.advance_generation();
+
+            if board == before {
+                let changed_generations = generation - 1;
+                assert!(
+                    changed_generations >= 5,
+                    "demo pattern should visibly change before stabilizing"
+                );
+                assert!(
+                    generation <= 20,
+                    "demo pattern should stabilize within 20 generations"
+                );
+                return;
+            }
+        }
+
+        panic!("demo pattern did not stabilize within 20 generations");
     }
 
     #[test]
@@ -127,6 +178,20 @@ mod edge_case_tests {
             .expect("recording board initialization is infallible");
 
         assert_eq!(board.writes, vec![CellCoordinate::new(0, 0)]);
+    }
+
+    #[test]
+    fn edge_case_demo_board_initializer_writes_only_in_bounds_cells() {
+        let mut board = RecordingBoard::new(1, 1);
+
+        DemoBoardInitializer
+            .initialize(&mut board)
+            .expect("recording board initialization is infallible");
+
+        assert!(board
+            .writes
+            .iter()
+            .all(|coordinate| coordinate.x < 1 && coordinate.y < 1));
     }
 
     #[test]

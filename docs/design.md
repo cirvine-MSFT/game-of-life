@@ -29,7 +29,8 @@ The core algorithm-facing traits are:
 
 The current concrete defaults are:
 
-- `CenteredBlinkerInitializer`: seeds the deterministic centered horizontal blinker used by the console app
+- `DemoBoardInitializer`: seeds the deterministic product/UI demo pattern used by the console app by default
+- `CenteredBlinkerInitializer`: seeds a deterministic centered horizontal blinker for oscillator demos and tests
 - `RandomBoardInitializer`: fills every cell from a seedable pseudo-random sequence, using an alive-cells-per-thousand density for reproducible experiments
 - `InPlaceTransitionalUpdater`: applies Conway's rules using the existing single-buffer, two-pass transitional-state algorithm
 
@@ -38,7 +39,7 @@ The current concrete defaults are:
 - Keeps algorithms decoupled from concrete board implementations such as `InMemoryBoard`
 - Preserves the current public convenience method, `InMemoryBoard::advance_generation()`, while allowing callers to use explicit updaters
 - Creates a natural seam for future behavior variants, runtime/space tradeoff comparisons, and alternate board storage backends
-- Allows CLI/configuration support for algorithm selection to be added later without changing board storage internals
+- Allows CLI/configuration support for initial board source selection without changing board storage internals
 
 **Grouped Reads**:
 
@@ -93,17 +94,38 @@ Alive ──[<2 or >3 neighbors]──→ Dying ──[normalize]──→ Dead
 - The one-board design doesn't corrupt neighbor calculations
 - Transitional states don't interfere with the generation's outcome
 
+## In-Memory Board Budget
+
+**Decision**: Bound `InMemoryBoard` allocation through a configurable byte budget.
+
+The CLI accepts `--max-board-memory <SIZE>`, where `SIZE` can be raw bytes or a whole-number `B`, `KB`, `MB`, or `GB` value. The value is stored as bytes in `SimulationConfig`.
+
+Validation order:
+
+1. Parse board dimensions as positive values representable by `usize`
+2. Compute `width * height` with checked arithmetic
+3. Compute requested cell-buffer bytes with `size_of::<CellState>()`
+4. Reject byte counts above the addressable allocation limit
+5. Reject byte counts above the configured memory budget
+
+Primitive/addressability limits are not user-overridable. Users can raise the configured memory budget, but they cannot bypass dimension parsing, checked multiplication, or addressable allocation limits.
+
+**Future seam**: The memory budget is intentionally expressed in bytes rather than cells or dimensions. Future file-backed boards can use the same setting to decide when to prefer streaming storage or how much of a file-backed board may be staged in memory. File-backed storage will still need separate disk, offset, and metadata validation.
+
 ## Console Application Design
 
-**Pattern**: Horizontal blinker (3 cells in a row) centered on the configured board when possible.
+**Default initial board**: Curated deterministic demo pattern on a `10x10` board.
 
 The console app now uses the algorithm abstractions internally:
 
 1. Create an `InMemoryBoard`
-2. Apply `CenteredBlinkerInitializer`
+2. Apply the selected initial board source:
+   - `demo` -> `DemoBoardInitializer`
+   - `blinker` -> `CenteredBlinkerInitializer`
+   - `random` -> `RandomBoardInitializer` with deterministic defaults
 3. Advance with `InPlaceTransitionalUpdater` for the configured iteration count
 
-No CLI option currently selects alternate algorithms. That is intentionally deferred until additional algorithms or configuration shapes are introduced.
+The CLI option `--initial-board <demo|blinker|random>` selects the source of the initial board. The source-oriented name leaves room for future values such as `file:<PATH>` without exposing Rust trait names in the command-line interface.
 
 **Output**:
 - Shows concise run information
@@ -111,10 +133,12 @@ No CLI option currently selects alternate algorithms. That is intentionally defe
 - Prints the final board state only
 - Uses ASCII characters (`#` for alive, `.` for dead) for platform-neutral console output
 
-**Determinism**: The initial pattern and default configuration are deterministic, ensuring consistent output for smoke tests.
+**Determinism**: The default demo pattern, blinker pattern, and random initializer defaults are deterministic, ensuring consistent output for smoke tests.
 
 **Extensibility**: The design is ready for:
-- User input patterns
+- File-based initial board patterns
+- Saved run snapshots that restore both board cells and run metadata such as generation index
+- File-backed board storage and streaming windows bounded by the memory budget
 - Variable board sizes
 - Configurable iteration counts
 - Optional per-generation, interactive, or step-through output modes

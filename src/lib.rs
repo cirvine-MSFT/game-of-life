@@ -11,12 +11,15 @@ pub mod board;
 pub mod config;
 
 pub use algorithms::{
-    BoardInitializer, BoardUpdater, CenteredBlinkerInitializer, InPlaceTransitionalUpdater,
-    RandomBoardInitializer, RandomBoardInitializerError, DEFAULT_ALIVE_CELLS_PER_THOUSAND,
-    MAX_ALIVE_CELLS_PER_THOUSAND,
+    BoardInitializer, BoardUpdater, CenteredBlinkerInitializer, DemoBoardInitializer,
+    InPlaceTransitionalUpdater, RandomBoardInitializer, RandomBoardInitializerError,
+    DEFAULT_ALIVE_CELLS_PER_THOUSAND, DEFAULT_RANDOM_SEED, MAX_ALIVE_CELLS_PER_THOUSAND,
 };
-pub use board::{BoardEditor, BoardView, CellCoordinate, CellState, InMemoryBoard};
+pub use board::{
+    BoardEditor, BoardView, CellCoordinate, CellState, InMemoryBoard, InMemoryBoardCreationError,
+};
 pub use config::{
-    parse_cli_args, BoardSize, BoardSizeParseError, CliCommand, ConfigError, IterationParseError,
-    SimulationConfig,
+    parse_cli_args, parse_memory_size, BoardSize, BoardSizeParseError, CliCommand, ConfigError,
+    InitialBoardSource, InitialBoardSourceParseError, IterationParseError, MemorySizeParseError,
+    SimulationConfig, DEFAULT_MAX_BOARD_MEMORY_BYTES,
 };

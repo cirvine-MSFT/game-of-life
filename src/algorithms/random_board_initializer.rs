@@ -5,6 +5,7 @@ use crate::board::{BoardEditor, CellCoordinate, CellState};
 use super::BoardInitializer;
 
 pub const DEFAULT_ALIVE_CELLS_PER_THOUSAND: u16 = 500;
+pub const DEFAULT_RANDOM_SEED: u64 = 42;
 pub const MAX_ALIVE_CELLS_PER_THOUSAND: u16 = 1000;
 
 /// Seeded pseudo-random initializer for reproducible starting boards.

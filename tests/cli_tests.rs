@@ -29,6 +29,8 @@ mod normal_tests {
         assert!(stdout.contains("Usage:"));
         assert!(stdout.contains("--board-size"));
         assert!(stdout.contains("--max-iterations"));
+        assert!(stdout.contains("--max-board-memory"));
+        assert!(stdout.contains("--initial-board"));
     }
 
     #[test]
@@ -41,6 +43,7 @@ mod normal_tests {
         let stdout = stdout(&output);
         assert!(stdout.contains("Board size: 2x2"));
         assert!(stdout.contains("Max iterations: 1"));
+        assert!(stdout.contains("Initial board: demo"));
         assert!(stdout.contains("Final board state:"));
         assert!(stdout.contains("..\n..\n"));
         assert!(stdout.contains("Simulation complete: 1 iterations"));
@@ -48,15 +51,61 @@ mod normal_tests {
     }
 
     #[test]
-    fn zero_iteration_run_uses_default_centered_blinker_initializer() {
+    fn zero_iteration_run_uses_default_demo_initial_board() {
         let output = run_cli(&["--max-iterations", "0"]);
 
         assert!(output.status.success());
         assert!(stderr(&output).is_empty());
 
         let stdout = stdout(&output);
-        assert!(stdout.contains("Board size: 5x5"));
+        assert!(stdout.contains("Board size: 10x10"));
+        assert!(stdout.contains("Initial board: demo"));
+        assert!(stdout.contains(
+            "Final board state:\n.....#....\n.........#\n...#....#.\n.#..#.....\n......#...\n###...#.#.\n........#.\n........#.\n#....##...\n#......#..\n"
+        ));
+    }
+
+    #[test]
+    fn selected_blinker_initial_board_is_used() {
+        let output = run_cli(&[
+            "--board-size",
+            "5x5",
+            "--max-iterations",
+            "0",
+            "--initial-board",
+            "blinker",
+        ]);
+
+        assert!(output.status.success());
+        assert!(stderr(&output).is_empty());
+
+        let stdout = stdout(&output);
+        assert!(stdout.contains("Initial board: blinker"));
         assert!(stdout.contains("Final board state:\n.....\n.....\n.###.\n.....\n.....\n"));
+    }
+
+    #[test]
+    fn selected_random_initial_board_is_deterministic() {
+        let first = run_cli(&[
+            "--board-size",
+            "3x3",
+            "--max-iterations",
+            "0",
+            "--initial-board",
+            "random",
+        ]);
+        let second = run_cli(&[
+            "--board-size",
+            "3x3",
+            "--max-iterations",
+            "0",
+            "--initial-board",
+            "random",
+        ]);
+
+        assert!(first.status.success());
+        assert!(second.status.success());
+        assert_eq!(stdout(&first), stdout(&second));
     }
 }
 
@@ -73,7 +122,7 @@ mod edge_case_tests {
         let stdout = stdout(&output);
         assert!(stdout.contains("Board size: 1x1"));
         assert!(stdout.contains("Max iterations: 0"));
-        assert!(stdout.contains("Final board state:\n#\n"));
+        assert!(stdout.contains("Final board state:\n.\n"));
         assert!(!stdout.contains("Generation 1:"));
     }
 }
@@ -130,6 +179,51 @@ mod negative_tests {
         let stderr = stderr(&output);
         assert!(stderr.contains("not an integer"));
         assert!(stderr.contains("non-negative whole number"));
+        assert!(stderr.contains("--help"));
+    }
+
+    #[test]
+    fn negative_invalid_memory_budget_exits_with_actionable_error() {
+        let output = run_cli(&["--max-board-memory", "1.5MB"]);
+
+        assert!(!output.status.success());
+        assert!(stdout(&output).is_empty());
+
+        let stderr = stderr(&output);
+        assert!(stderr.contains("whole-number size"));
+        assert!(stderr.contains("--help"));
+    }
+
+    #[test]
+    fn negative_memory_budget_too_small_for_board_exits_with_actionable_error() {
+        let output = run_cli(&[
+            "--board-size",
+            "10x10",
+            "--max-board-memory",
+            "99B",
+            "--max-iterations",
+            "0",
+        ]);
+
+        assert!(!output.status.success());
+        assert!(stdout(&output).is_empty());
+
+        let stderr = stderr(&output);
+        assert!(stderr.contains("requires 100 bytes"));
+        assert!(stderr.contains("configured max board memory"));
+        assert!(stderr.contains("--help"));
+    }
+
+    #[test]
+    fn negative_invalid_initial_board_exits_with_actionable_error() {
+        let output = run_cli(&["--initial-board", "file:seed.txt"]);
+
+        assert!(!output.status.success());
+        assert!(stdout(&output).is_empty());
+
+        let stderr = stderr(&output);
+        assert!(stderr.contains("demo, blinker, random"));
+        assert!(stderr.contains("planned"));
         assert!(stderr.contains("--help"));
     }
 }

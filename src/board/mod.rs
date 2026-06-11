@@ -9,5 +9,5 @@ mod view;
 pub use cell_state::CellState;
 pub use coordinate::CellCoordinate;
 pub use editor::BoardEditor;
-pub use in_memory_board::InMemoryBoard;
+pub use in_memory_board::{InMemoryBoard, InMemoryBoardCreationError};
 pub use view::BoardView;
