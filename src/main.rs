@@ -5,7 +5,10 @@
 
 use std::{env, process};
 
-use game_of_life::{parse_cli_args, Board, CellState, CliCommand, SimulationConfig};
+use game_of_life::{
+    parse_cli_args, BoardInitializer, BoardUpdater, CenteredBlinkerInitializer, CliCommand,
+    InMemoryBoard, InPlaceTransitionalUpdater, SimulationConfig,
+};
 
 const HELP_TEXT: &str = concat!(
     "Game of Life\n",
@@ -40,11 +43,16 @@ fn main() {
 }
 
 fn run_simulation(config: SimulationConfig) {
-    let mut board = Board::new(config.board_size.width, config.board_size.height);
-    seed_fixed_blinker(&mut board);
+    let mut board = InMemoryBoard::new(config.board_size.width, config.board_size.height);
+    CenteredBlinkerInitializer
+        .initialize(&mut board)
+        .expect("in-memory board initialization is infallible");
+    let updater = InPlaceTransitionalUpdater;
 
     for _ in 0..config.max_iterations {
-        board.advance_generation();
+        updater
+            .advance_generation(&mut board)
+            .expect("in-memory board updates are infallible");
     }
 
     println!("Game of Life");
@@ -54,18 +62,6 @@ fn run_simulation(config: SimulationConfig) {
     println!("Final board state:");
     print!("{board}");
     println!("Simulation complete: {} iterations", config.max_iterations);
-}
-
-fn seed_fixed_blinker(board: &mut Board) {
-    let center_x = board.width() / 2;
-    let center_y = board.height() / 2;
-
-    for dx in [-1, 0, 1] {
-        let x = center_x as isize + dx;
-        if x >= 0 {
-            board.set(x as usize, center_y, CellState::Alive);
-        }
-    }
 }
 
 fn print_help() {

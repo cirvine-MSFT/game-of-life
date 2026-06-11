@@ -16,9 +16,47 @@ This document describes the design of the Rust implementation of Conway's Game o
 
 **Tradeoff**: Patterns are not preserved at edges when they would wrap in toroidal boards, but this is the intended behavior.
 
-## Single Board with Transitional States
+## Algorithm Pattern Design
 
-**Decision**: Use one board buffer with four cell states (Dead, Alive, Dying, Resurrecting) instead of maintaining two full board copies.
+**Decision**: Use Rust traits to separate board storage from board initialization and update algorithms.
+
+The core algorithm-facing traits are:
+
+- `BoardView`: fallible read-only random-access board surface exposing dimensions, single-cell reads, and grouped coordinate reads
+- `BoardEditor`: fallible mutable random-access board surface that extends `BoardView` with cell writes
+- `BoardInitializer`: interface for algorithms that initialize a board with a starting state
+- `BoardUpdater`: interface for algorithms that advance a board by one generation
+
+The current concrete defaults are:
+
+- `CenteredBlinkerInitializer`: seeds the deterministic centered horizontal blinker used by the console app
+- `RandomBoardInitializer`: fills every cell from a seedable pseudo-random sequence, using an alive-cells-per-thousand density for reproducible experiments
+- `InPlaceTransitionalUpdater`: applies Conway's rules using the existing single-buffer, two-pass transitional-state algorithm
+
+**Rationale**:
+
+- Keeps algorithms decoupled from concrete board implementations such as `InMemoryBoard`
+- Preserves the current public convenience method, `InMemoryBoard::advance_generation()`, while allowing callers to use explicit updaters
+- Creates a natural seam for future behavior variants, runtime/space tradeoff comparisons, and alternate board storage backends
+- Allows CLI/configuration support for algorithm selection to be added later without changing board storage internals
+
+**Grouped Reads**:
+
+`BoardView::read_cells()` accepts a caller-provided list of `CellCoordinate` values and fills a caller-provided output collection in the same order. Board reads and writes return `Result` values, so future file-backed implementations can surface I/O, flush, or corruption errors instead of panicking or silently dropping failures. This is intentionally more flexible than only exposing single-cell reads because future algorithms may:
+
+- Define neighborhoods differently from Conway's eight adjacent cells
+- Inspect larger stencils or arbitrary cell collections
+- Batch reads for file-backed, chunked, or streaming board storage
+
+The current in-memory board still resolves grouped reads through direct coordinate lookups. Future storage implementations can preserve the same trait contract while optimizing the underlying access pattern.
+
+These traits are still random-access board interfaces, not true streaming interfaces. A future streaming board will likely add region, row-window, or source/destination traits once that storage model is designed.
+
+An explicit all-dead initializer is not currently needed because `InMemoryBoard::new()` already starts every cell as `Dead`. If future workflows need to reset an existing board through the initializer interface, a concrete clear/reset initializer can be added without changing the trait.
+
+## Default Single Board Update with Transitional States
+
+**Decision**: Keep the default update algorithm on one board buffer with four cell states (Dead, Alive, Dying, Resurrecting) instead of maintaining two full board copies.
 
 **Rationale**:
 - Reduces memory usage (single buffer instead of double buffering)
@@ -59,6 +97,14 @@ Alive ──[<2 or >3 neighbors]──→ Dying ──[normalize]──→ Dead
 
 **Pattern**: Horizontal blinker (3 cells in a row) centered on the configured board when possible.
 
+The console app now uses the algorithm abstractions internally:
+
+1. Create an `InMemoryBoard`
+2. Apply `CenteredBlinkerInitializer`
+3. Advance with `InPlaceTransitionalUpdater` for the configured iteration count
+
+No CLI option currently selects alternate algorithms. That is intentionally deferred until additional algorithms or configuration shapes are introduced.
+
 **Output**:
 - Shows concise run information
 - Advances to the configured maximum iteration count
@@ -77,7 +123,8 @@ Alive ──[<2 or >3 neighbors]──→ Dying ──[normalize]──→ Dead
 
 ```
 src/
-  board.rs     - Board, CellState, display, and generation logic
+  algorithms/  - Algorithm traits and concrete initializer/update implementations
+  board/       - Board traits, cell model, and concrete board implementations
   config.rs    - SimulationConfig, BoardSize, and CLI/config parsing
   lib.rs       - Public module declarations and re-exports
   main.rs      - Console application binary
@@ -148,6 +195,8 @@ Cargo.toml     - Project manifest with library and binary targets
 | Bounded board (no wrapping) | Simpler edge semantics | Patterns don't preserve at edges |
 | No external dependencies | Lightweight, portable | Must implement everything from scratch |
 | Hardcoded console pattern | Deterministic, easy to test | Less flexible for exploration |
+| Trait-based algorithms | Decouples behavior from storage and enables future variants | Adds a small abstraction layer |
+| Grouped coordinate reads | Supports custom neighborhoods and future batched storage reads | Current in-memory implementation still resolves individual cells |
 | ASCII console output | Portable across Windows, Linux, and CI logs | Less visually rich than Unicode output |
 | Final-state-only default output | Keeps CLI runs readable | Requires a future option for generation-by-generation viewing |
 
@@ -162,7 +211,7 @@ Future work should be guided by the customer lens in [../CUSTOMERS.md](../CUSTOM
 5. **Pattern Analysis**: Detect still lifes, oscillators, periods, spaceships, extinction, and long transients
 6. **Visualization and Replay**: Provide views that explain board evolution better than console board dumps
 7. **Interactive Mode**: Step through generations interactively
-8. **Performance**: Profile and optimize for large boards or many independent runs (consider bit-packing or sparse representations when justified)
+8. **Performance and Storage**: Profile and optimize for large boards or many independent runs. Consider bit-packing, sparse representations, chunked file-backed storage, and streaming reads/writes when justified.
 9. **Telemetry**: Expose operations, timing, and memory-relevant dimensions for educator-facing algorithm comparisons
 10. **Patterns Library**: Pre-built patterns (gliders, oscillators, spaceships)
 
@@ -170,3 +219,7 @@ Future work should be guided by the customer lens in [../CUSTOMERS.md](../CUSTOM
 
 - [Conway's Game of Life - Wikipedia](https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life)
 - [Patterns and behaviors](https://www.conwaylife.com/)
+
+## Architecture Diagram
+
+The editable architecture diagram is maintained in [architecture.excalidraw](architecture.excalidraw). A static PNG export is linked from the repository README for easier Markdown viewing.

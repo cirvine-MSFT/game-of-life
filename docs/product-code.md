@@ -6,7 +6,8 @@ Keep product code module-centric and small enough that ownership is obvious.
 
 | Module | Owns | Should not own |
 |--------|------|----------------|
-| `src/board.rs` | `Board`, `CellState`, display formatting, and generation advancement. | CLI parsing, file loading, or simulation orchestration. |
+| `src/board/` | `BoardView`, `BoardEditor`, `InMemoryBoard`, `CellState`, display formatting, and generation convenience. | CLI parsing, file loading, or simulation orchestration. |
+| `src/algorithms/` | `BoardInitializer`, `BoardUpdater`, and concrete initializer/update implementations. | Concrete board storage or CLI parsing. |
 | `src/config.rs` | `SimulationConfig`, `BoardSize`, CLI/config parsing helpers, and typed configuration errors. | Board mutation or console output. |
 | `src/lib.rs` | Public module declarations and re-exports. | Product logic. |
 | `src/main.rs` | Process entry point, help text, stderr/stdout behavior, exit codes, and wiring config into a run. | Board rules or reusable parser logic. |
