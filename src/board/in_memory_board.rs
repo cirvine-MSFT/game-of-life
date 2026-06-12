@@ -1,5 +1,6 @@
 use std::convert::Infallible;
 use std::fmt;
+use std::mem;
 
 use crate::algorithms::{BoardUpdater, InPlaceTransitionalUpdater};
 
@@ -19,11 +20,40 @@ pub struct InMemoryBoard {
 impl InMemoryBoard {
     /// Creates a new in-memory board with all cells dead.
     pub fn new(width: usize, height: usize) -> Self {
+        let cell_count = checked_cell_count(width, height)
+            .expect("board dimensions exceed addressable cell capacity");
         Self {
             width,
             height,
-            cells: vec![CellState::Dead; width * height],
+            cells: vec![CellState::Dead; cell_count],
         }
+    }
+
+    /// Creates a new in-memory board if the allocation fits within `max_memory_bytes`.
+    pub fn try_new(
+        width: usize,
+        height: usize,
+        max_memory_bytes: usize,
+    ) -> Result<Self, InMemoryBoardCreationError> {
+        let requested_memory_bytes = checked_allocation_bytes(width, height)?;
+        if requested_memory_bytes > max_memory_bytes {
+            return Err(InMemoryBoardCreationError::MemoryBudgetExceeded {
+                width,
+                height,
+                requested_memory_bytes,
+                max_memory_bytes,
+            });
+        }
+
+        Ok(Self::new(width, height))
+    }
+
+    /// Returns the bytes needed for the board's cell buffer.
+    pub fn allocation_bytes(
+        width: usize,
+        height: usize,
+    ) -> Result<usize, InMemoryBoardCreationError> {
+        checked_allocation_bytes(width, height)
     }
 
     /// Returns the width of the board.
@@ -62,6 +92,105 @@ impl InMemoryBoard {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InMemoryBoardCreationError {
+    CellCountOverflow {
+        width: usize,
+        height: usize,
+    },
+    AllocationSizeOverflow {
+        width: usize,
+        height: usize,
+        cell_count: usize,
+        cell_size: usize,
+    },
+    AllocationAddressSpaceExceeded {
+        width: usize,
+        height: usize,
+        requested_memory_bytes: usize,
+        max_addressable_bytes: usize,
+    },
+    MemoryBudgetExceeded {
+        width: usize,
+        height: usize,
+        requested_memory_bytes: usize,
+        max_memory_bytes: usize,
+    },
+}
+
+impl fmt::Display for InMemoryBoardCreationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InMemoryBoardCreationError::CellCountOverflow { width, height } => write!(
+                f,
+                "Board size '{width}x{height}' is too large; width times height exceeds the supported cell capacity."
+            ),
+            InMemoryBoardCreationError::AllocationSizeOverflow {
+                width,
+                height,
+                cell_count,
+                cell_size,
+            } => write!(
+                f,
+                "Board size '{width}x{height}' is too large; {cell_count} cells at {cell_size} bytes per cell exceed the supported allocation size."
+            ),
+            InMemoryBoardCreationError::AllocationAddressSpaceExceeded {
+                width,
+                height,
+                requested_memory_bytes,
+                max_addressable_bytes,
+            } => write!(
+                f,
+                "Board size '{width}x{height}' requires {requested_memory_bytes} bytes, which exceeds the addressable allocation limit of {max_addressable_bytes} bytes."
+            ),
+            InMemoryBoardCreationError::MemoryBudgetExceeded {
+                width,
+                height,
+                requested_memory_bytes,
+                max_memory_bytes,
+            } => write!(
+                f,
+                "Board size '{width}x{height}' requires {requested_memory_bytes} bytes, which exceeds the configured max board memory of {max_memory_bytes} bytes."
+            ),
+        }
+    }
+}
+
+impl std::error::Error for InMemoryBoardCreationError {}
+
+fn checked_cell_count(width: usize, height: usize) -> Result<usize, InMemoryBoardCreationError> {
+    width
+        .checked_mul(height)
+        .ok_or(InMemoryBoardCreationError::CellCountOverflow { width, height })
+}
+
+fn checked_allocation_bytes(
+    width: usize,
+    height: usize,
+) -> Result<usize, InMemoryBoardCreationError> {
+    let cell_count = checked_cell_count(width, height)?;
+    let cell_size = mem::size_of::<CellState>();
+    let requested_memory_bytes = cell_count.checked_mul(cell_size).ok_or(
+        InMemoryBoardCreationError::AllocationSizeOverflow {
+            width,
+            height,
+            cell_count,
+            cell_size,
+        },
+    )?;
+    let max_addressable_bytes = isize::MAX as usize;
+    if requested_memory_bytes > max_addressable_bytes {
+        return Err(InMemoryBoardCreationError::AllocationAddressSpaceExceeded {
+            width,
+            height,
+            requested_memory_bytes,
+            max_addressable_bytes,
+        });
+    }
+
+    Ok(requested_memory_bytes)
+}
+
 impl BoardView for InMemoryBoard {
     type Error = Infallible;
 
@@ -85,6 +214,11 @@ impl BoardEditor for InMemoryBoard {
         state: CellState,
     ) -> Result<(), Self::Error> {
         self.set(coordinate.x, coordinate.y, state);
+        Ok(())
+    }
+
+    fn fill_cells(&mut self, state: CellState) -> Result<(), Self::Error> {
+        self.cells.fill(state);
         Ok(())
     }
 }

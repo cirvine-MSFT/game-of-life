@@ -1,6 +1,7 @@
 use game_of_life::{
-    BoardEditor, BoardInitializer, BoardUpdater, BoardView, CellCoordinate, CellState,
-    CenteredBlinkerInitializer, InMemoryBoard, InPlaceTransitionalUpdater, RandomBoardInitializer,
+    BlinkerBoardInitializer, BoardEditor, BoardInitializer, BoardUpdater, BoardView,
+    CellCoordinate, CellState, CenteredBlinkerInitializer, DemoBoardInitializer,
+    FullyAliveInitializer, InMemoryBoard, InPlaceTransitionalUpdater, RandomBoardInitializer,
     RandomBoardInitializerError,
 };
 use std::convert::Infallible;
@@ -24,6 +25,35 @@ fn board_from_grid(lines: &[&str]) -> InMemoryBoard {
     board
 }
 
+fn assert_stabilizes_within(mut board: InMemoryBoard, max_generations: usize) {
+    for generation in 1..=max_generations {
+        let before = board.clone();
+        board.advance_generation();
+
+        if board == before {
+            assert!(
+                generation <= max_generations,
+                "pattern should stabilize within {max_generations} generations"
+            );
+            return;
+        }
+    }
+
+    panic!("pattern did not stabilize within {max_generations} generations");
+}
+
+fn live_cell_count(board: &InMemoryBoard) -> usize {
+    let mut count = 0;
+    for y in 0..board.height() {
+        for x in 0..board.width() {
+            if board.get(x, y) == CellState::Alive {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
 mod normal_tests {
     use super::*;
 
@@ -37,6 +67,147 @@ mod normal_tests {
 
         let expected = board_from_grid(&[".....", ".....", ".###.", ".....", "....."]);
         assert_eq!(board, expected);
+    }
+
+    #[test]
+    fn blinker_board_initializer_seeds_middle_row() {
+        let mut board = InMemoryBoard::new(5, 5);
+
+        BlinkerBoardInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        let expected = board_from_grid(&[".....", ".....", ".###.", ".....", "....."]);
+        assert_eq!(board, expected);
+    }
+
+    #[test]
+    fn fully_alive_initializer_seeds_every_cell() {
+        let mut board = InMemoryBoard::new(3, 2);
+
+        FullyAliveInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        let expected = board_from_grid(&["###", "###"]);
+        assert_eq!(board, expected);
+    }
+
+    #[test]
+    fn fully_alive_board_larger_than_two_by_two_dies_quickly() {
+        let mut board = InMemoryBoard::new(4, 4);
+
+        FullyAliveInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+        board.advance_generation();
+        let expected_after_one = board_from_grid(&["#..#", "....", "....", "#..#"]);
+        assert_eq!(board, expected_after_one);
+
+        board.advance_generation();
+        let expected_after_two = board_from_grid(&["....", "....", "....", "...."]);
+        assert_eq!(board, expected_after_two);
+    }
+
+    #[test]
+    fn fully_alive_two_by_two_board_is_stable() {
+        let mut board = InMemoryBoard::new(2, 2);
+
+        FullyAliveInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+        let initial = board.clone();
+
+        board.advance_generation();
+
+        assert_eq!(board, initial);
+    }
+
+    #[test]
+    fn demo_board_initializer_seeds_curated_ten_by_ten_pattern() {
+        let mut board = InMemoryBoard::new(10, 10);
+
+        DemoBoardInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        let expected = board_from_grid(&[
+            "..........",
+            "..........",
+            ".....#.#..",
+            "..#.##.#..",
+            "......#...",
+            "...##.....",
+            "..##.#....",
+            "...#......",
+            "..........",
+            "..........",
+        ]);
+        assert_eq!(board, expected);
+    }
+
+    #[test]
+    fn demo_board_initializer_reaches_stability_within_twenty_generations() {
+        let mut board = InMemoryBoard::new(10, 10);
+        DemoBoardInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        for generation in 1..=20 {
+            let before = board.clone();
+            board.advance_generation();
+
+            if board == before {
+                let changed_generations = generation - 1;
+                assert!(
+                    changed_generations >= 5,
+                    "demo pattern should visibly change before stabilizing"
+                );
+                assert!(
+                    generation <= 20,
+                    "demo pattern should stabilize within 20 generations"
+                );
+                return;
+            }
+        }
+
+        panic!("demo pattern did not stabilize within 20 generations");
+    }
+
+    #[test]
+    fn demo_board_initializer_repeats_independent_tiles_on_larger_boards() {
+        let mut board = InMemoryBoard::new(24, 24);
+        DemoBoardInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        assert_eq!(live_cell_count(&board), 52);
+        assert_stabilizes_within(board, 20);
+    }
+
+    #[test]
+    fn demo_board_initializer_stabilizes_across_representative_board_sizes() {
+        for (width, height) in [
+            (1, 1),
+            (2, 2),
+            (3, 5),
+            (5, 3),
+            (7, 9),
+            (9, 7),
+            (10, 10),
+            (12, 12),
+            (24, 10),
+            (10, 24),
+            (24, 24),
+            (37, 25),
+        ] {
+            let mut board = InMemoryBoard::new(width, height);
+            DemoBoardInitializer
+                .initialize(&mut board)
+                .expect("in-memory board initialization is infallible");
+
+            assert_stabilizes_within(board, 20);
+        }
     }
 
     #[test]
@@ -130,6 +301,32 @@ mod edge_case_tests {
     }
 
     #[test]
+    fn edge_case_demo_board_initializer_writes_only_in_bounds_cells() {
+        let mut board = RecordingBoard::new(1, 1);
+
+        DemoBoardInitializer
+            .initialize(&mut board)
+            .expect("recording board initialization is infallible");
+
+        assert!(board
+            .writes
+            .iter()
+            .all(|coordinate| coordinate.x < 1 && coordinate.y < 1));
+    }
+
+    #[test]
+    fn edge_case_demo_board_initializer_uses_small_settling_motif_on_small_boards() {
+        let mut board = InMemoryBoard::new(5, 5);
+        DemoBoardInitializer
+            .initialize(&mut board)
+            .expect("in-memory board initialization is infallible");
+
+        let expected = board_from_grid(&[".....", ".##..", ".#...", ".....", "....."]);
+        assert_eq!(board, expected);
+        assert_stabilizes_within(board, 20);
+    }
+
+    #[test]
     fn edge_case_grouped_read_returns_dead_for_out_of_bounds_cells() {
         let board = board_from_grid(&["#.", ".#"]);
         let coordinates = [
@@ -161,6 +358,67 @@ mod edge_case_tests {
 
         let expected = board_from_grid(&["###", "###"]);
         assert_eq!(board, expected);
+    }
+
+    #[test]
+    fn edge_case_random_board_initializer_zero_density_uses_fill_fallback() {
+        let initializer = RandomBoardInitializer::with_alive_cells_per_thousand(42, 0)
+            .expect("valid random initializer density");
+        let mut board = RecordingBoard::new(2, 2);
+
+        initializer
+            .initialize(&mut board)
+            .expect("recording board initialization is infallible");
+
+        assert_eq!(
+            board.writes,
+            vec![
+                CellCoordinate::new(0, 0),
+                CellCoordinate::new(1, 0),
+                CellCoordinate::new(0, 1),
+                CellCoordinate::new(1, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn edge_case_random_board_initializer_full_density_uses_fill_fallback() {
+        let initializer = RandomBoardInitializer::with_alive_cells_per_thousand(42, 1000)
+            .expect("valid random initializer density");
+        let mut board = RecordingBoard::new(2, 2);
+
+        initializer
+            .initialize(&mut board)
+            .expect("recording board initialization is infallible");
+
+        assert_eq!(
+            board.writes,
+            vec![
+                CellCoordinate::new(0, 0),
+                CellCoordinate::new(1, 0),
+                CellCoordinate::new(0, 1),
+                CellCoordinate::new(1, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn edge_case_fully_alive_initializer_uses_generic_fill_fallback() {
+        let mut board = RecordingBoard::new(2, 2);
+
+        FullyAliveInitializer
+            .initialize(&mut board)
+            .expect("recording board initialization is infallible");
+
+        assert_eq!(
+            board.writes,
+            vec![
+                CellCoordinate::new(0, 0),
+                CellCoordinate::new(1, 0),
+                CellCoordinate::new(0, 1),
+                CellCoordinate::new(1, 1),
+            ]
+        );
     }
 
     #[test]
@@ -212,6 +470,30 @@ mod negative_tests {
         let mut board = ErroringBoard::new(1, 1).fail_writes();
 
         let error = RandomBoardInitializer::new(42)
+            .initialize(&mut board)
+            .expect_err("board write error should propagate");
+
+        assert_eq!(error, TestBoardError::Write);
+    }
+
+    #[test]
+    fn negative_random_board_initializer_fill_path_propagates_board_write_errors() {
+        let mut board = ErroringBoard::new(1, 1).fail_writes();
+        let initializer = RandomBoardInitializer::with_alive_cells_per_thousand(42, 1000)
+            .expect("valid random initializer density");
+
+        let error = initializer
+            .initialize(&mut board)
+            .expect_err("board write error should propagate");
+
+        assert_eq!(error, TestBoardError::Write);
+    }
+
+    #[test]
+    fn negative_fully_alive_initializer_propagates_board_write_errors() {
+        let mut board = ErroringBoard::new(1, 1).fail_writes();
+
+        let error = FullyAliveInitializer
             .initialize(&mut board)
             .expect_err("board write error should propagate");
 

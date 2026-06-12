@@ -8,6 +8,16 @@ pub struct CenteredBlinkerInitializer;
 
 impl BoardInitializer for CenteredBlinkerInitializer {
     fn initialize<B: BoardEditor + ?Sized>(&self, board: &mut B) -> Result<(), B::Error> {
+        BlinkerBoardInitializer.initialize(board)
+    }
+}
+
+/// Seeds a horizontal three-cell blinker centered on the board when possible.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BlinkerBoardInitializer;
+
+impl BoardInitializer for BlinkerBoardInitializer {
+    fn initialize<B: BoardEditor + ?Sized>(&self, board: &mut B) -> Result<(), B::Error> {
         let width = board.width();
         let height = board.height();
         if width == 0 || height == 0 {

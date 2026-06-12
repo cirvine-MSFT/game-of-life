@@ -73,22 +73,25 @@ The console app prints concise run information and the final board state only. P
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-h`, `--help` | Print usage and supported options. | N/A |
-| `-b`, `--board-size <WIDTHxHEIGHT>` | Set the bounded 2D board size, such as `5x5` or `10x20`. | `5x5` |
+| `-b`, `--board-size <WIDTHxHEIGHT>` | Set the bounded 2D board size, such as `5x5` or `10x20`. | `10x10` |
 | `-m`, `--max-iterations <COUNT>` | Set how many generations to run. Use `0` to print the initial board as the final state. | `10` |
+| `--max-board-memory <SIZE>` | Set the in-memory board budget. Supports raw bytes plus `B`, `KB`, `MB`, and `GB` suffixes, such as `64MB`. | `64MB` |
+| `--initial-board <SOURCE>` | Set the initial board source. Supported values are `demo`, `alive`, `blinker`, and `random`. | `demo` |
 
 ### Algorithm Overview
 
 - **Board Implementation**: `InMemoryBoard` is the current finite, bounded board implementation (out-of-bounds neighbors are dead; no toroidal wrapping)
 - **Board Access Traits**: Algorithms use fallible `BoardView`/`BoardEditor` traits instead of concrete board storage, including grouped coordinate reads for custom neighborhoods or future storage batching
-- **Initialization Interface**: `BoardInitializer` is the trait for seeding a board; concrete implementations include `CenteredBlinkerInitializer` and seedable `RandomBoardInitializer`
+- **Initialization Interface**: `BoardInitializer` is the trait for seeding a board; concrete implementations include demo, fully alive, blinker, and seedable random initializers
 - **Update Interface**: `BoardUpdater` advances a board; the default is `InPlaceTransitionalUpdater`
+- **Memory Budget**: `InMemoryBoard::try_new()` validates checked cell/byte math and rejects allocations above `--max-board-memory`
 - **Cell States**: Dead, Alive, Dying, Resurrecting (transitional states enable single-board generation)
 - **Default Generation Advancement**:
   1. **Mark Pass**: Compute each cell's next state using transitional states
   2. **Normalize Pass**: Convert Dying → Dead and Resurrecting → Alive
 - **Neighbor Counting**: Alive and Dying treated as originally live; Dead and Resurrecting treated as originally dead
 - **Result**: After generation, board contains only Dead and Alive states
-- **Configuration**: CLI selection of alternate algorithms is intentionally deferred; current CLI behavior remains deterministic
+- **Configuration**: CLI options select board size, iteration count, memory budget, and initial board source; `demo` remains deterministic while `random` generates a fresh random board each run
 
 ### Architecture diagram
 

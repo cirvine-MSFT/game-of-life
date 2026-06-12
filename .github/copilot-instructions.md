@@ -54,7 +54,7 @@ docs/
    - Simpler deployment
    - Easier to review and extend
 
-4. **Console Application**: Configurable board size and max iterations with deterministic defaults
+4. **Console Application**: Configurable board size and max iterations with deterministic demo defaults
    - Ideal for smoke testing in CI
    - Prints concise run information and the final board state only
    - Ready to accept user input patterns as future enhancement
