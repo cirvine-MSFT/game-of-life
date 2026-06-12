@@ -109,9 +109,9 @@ fn seed_cropped_pattern<B: BoardEditor + ?Sized>(
 }
 
 fn pattern_count(board_length: usize, pattern_length: usize, gutter: usize) -> usize {
-    (board_length + gutter) / (pattern_length + gutter)
+    1 + (board_length - pattern_length) / (pattern_length + gutter)
 }
 
 fn pattern_span(count: usize, pattern_length: usize, gutter: usize) -> usize {
-    count * pattern_length + (count - 1) * gutter
+    pattern_length + (count - 1) * (pattern_length + gutter)
 }

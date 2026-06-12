@@ -186,6 +186,31 @@ mod normal_tests {
     }
 
     #[test]
+    fn demo_board_initializer_stabilizes_across_representative_board_sizes() {
+        for (width, height) in [
+            (1, 1),
+            (2, 2),
+            (3, 5),
+            (5, 3),
+            (7, 9),
+            (9, 7),
+            (10, 10),
+            (12, 12),
+            (24, 10),
+            (10, 24),
+            (24, 24),
+            (37, 25),
+        ] {
+            let mut board = InMemoryBoard::new(width, height);
+            DemoBoardInitializer
+                .initialize(&mut board)
+                .expect("in-memory board initialization is infallible");
+
+            assert_stabilizes_within(board, 20);
+        }
+    }
+
+    #[test]
     fn grouped_read_returns_cells_in_requested_order() {
         let board = board_from_grid(&["#.", ".#"]);
         let coordinates = [
