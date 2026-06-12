@@ -361,6 +361,67 @@ mod edge_case_tests {
     }
 
     #[test]
+    fn edge_case_random_board_initializer_zero_density_uses_fill_fallback() {
+        let initializer = RandomBoardInitializer::with_alive_cells_per_thousand(42, 0)
+            .expect("valid random initializer density");
+        let mut board = RecordingBoard::new(2, 2);
+
+        initializer
+            .initialize(&mut board)
+            .expect("recording board initialization is infallible");
+
+        assert_eq!(
+            board.writes,
+            vec![
+                CellCoordinate::new(0, 0),
+                CellCoordinate::new(1, 0),
+                CellCoordinate::new(0, 1),
+                CellCoordinate::new(1, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn edge_case_random_board_initializer_full_density_uses_fill_fallback() {
+        let initializer = RandomBoardInitializer::with_alive_cells_per_thousand(42, 1000)
+            .expect("valid random initializer density");
+        let mut board = RecordingBoard::new(2, 2);
+
+        initializer
+            .initialize(&mut board)
+            .expect("recording board initialization is infallible");
+
+        assert_eq!(
+            board.writes,
+            vec![
+                CellCoordinate::new(0, 0),
+                CellCoordinate::new(1, 0),
+                CellCoordinate::new(0, 1),
+                CellCoordinate::new(1, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn edge_case_fully_alive_initializer_uses_generic_fill_fallback() {
+        let mut board = RecordingBoard::new(2, 2);
+
+        FullyAliveInitializer
+            .initialize(&mut board)
+            .expect("recording board initialization is infallible");
+
+        assert_eq!(
+            board.writes,
+            vec![
+                CellCoordinate::new(0, 0),
+                CellCoordinate::new(1, 0),
+                CellCoordinate::new(0, 1),
+                CellCoordinate::new(1, 1),
+            ]
+        );
+    }
+
+    #[test]
     fn edge_case_algorithms_handle_empty_boards_without_writes() {
         let mut board = RecordingBoard::new(0, 0);
 
@@ -409,6 +470,30 @@ mod negative_tests {
         let mut board = ErroringBoard::new(1, 1).fail_writes();
 
         let error = RandomBoardInitializer::new(42)
+            .initialize(&mut board)
+            .expect_err("board write error should propagate");
+
+        assert_eq!(error, TestBoardError::Write);
+    }
+
+    #[test]
+    fn negative_random_board_initializer_fill_path_propagates_board_write_errors() {
+        let mut board = ErroringBoard::new(1, 1).fail_writes();
+        let initializer = RandomBoardInitializer::with_alive_cells_per_thousand(42, 1000)
+            .expect("valid random initializer density");
+
+        let error = initializer
+            .initialize(&mut board)
+            .expect_err("board write error should propagate");
+
+        assert_eq!(error, TestBoardError::Write);
+    }
+
+    #[test]
+    fn negative_fully_alive_initializer_propagates_board_write_errors() {
+        let mut board = ErroringBoard::new(1, 1).fail_writes();
+
+        let error = FullyAliveInitializer
             .initialize(&mut board)
             .expect_err("board write error should propagate");
 

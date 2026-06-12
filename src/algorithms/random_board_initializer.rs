@@ -53,6 +53,14 @@ impl RandomBoardInitializer {
 
 impl BoardInitializer for RandomBoardInitializer {
     fn initialize<B: BoardEditor + ?Sized>(&self, board: &mut B) -> Result<(), B::Error> {
+        if self.alive_cells_per_thousand == 0 {
+            return board.fill_cells(CellState::Dead);
+        }
+
+        if self.alive_cells_per_thousand == MAX_ALIVE_CELLS_PER_THOUSAND {
+            return board.fill_cells(CellState::Alive);
+        }
+
         let mut rng = SplitMix64::new(self.seed);
 
         for y in 0..board.height() {

@@ -216,6 +216,11 @@ impl BoardEditor for InMemoryBoard {
         self.set(coordinate.x, coordinate.y, state);
         Ok(())
     }
+
+    fn fill_cells(&mut self, state: CellState) -> Result<(), Self::Error> {
+        self.cells.fill(state);
+        Ok(())
+    }
 }
 
 impl fmt::Display for InMemoryBoard {
