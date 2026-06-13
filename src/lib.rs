@@ -10,6 +10,7 @@ pub mod algorithms;
 pub mod board;
 pub mod config;
 pub mod persistence;
+pub mod stats;
 
 pub use algorithms::{
     BlinkerBoardInitializer, BoardInitializer, BoardUpdater, CenteredBlinkerInitializer,
@@ -25,3 +26,4 @@ pub use config::{
     InitialBoardSource, InitialBoardSourceParseError, IterationParseError, MemorySizeParseError,
     SimulationConfig, DEFAULT_MAX_BOARD_MEMORY_BYTES,
 };
+pub use stats::{AdvanceOutcome, RunStatistics, RunStatisticsCollector};

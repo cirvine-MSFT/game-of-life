@@ -36,9 +36,11 @@ pub use magic::{
 pub use parser::{ParseError, ParseLocation};
 pub use run_id::{format_run_id, parse_run_id, short_run_id, RunId, RunIdParseError};
 pub use run_record::{
-    extract_board_from_run, read_run_record, write_run_record, ContentHashMode, ExtractWhich,
-    RunRecord, RunRecordConfig, RunRecordReadError, RunRecordResult, RunRecordWriteError,
-    FINAL_BOARD_LABEL, INITIAL_BOARD_LABEL,
+    board_grid_hash, extract_board_from_run, read_run_record, read_run_record_default,
+    read_run_record_with_warnings, write_run_record, ContentHashMode, ExtractBoardError,
+    ExtractWhich, LoadedRunRecord, RunRecord, RunRecordConfig, RunRecordReadError,
+    RunRecordResult, RunRecordWriteError, FINAL_BOARD_LABEL, INITIAL_BOARD_LABEL,
+    RECOGNIZED_STATUSES, TOOL_VERSION,
 };
 pub use timestamps::{format_utc, parse_utc, TimestampParseError};
 
