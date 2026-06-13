@@ -309,10 +309,19 @@ pub enum ConfigError {
     InvalidMaxBoardMemory(MemorySizeParseError),
     InvalidInitialBoard(InitialBoardSourceParseError),
     InvalidLoadFrom(LoadFromParseError),
-    ConflictingInitialBoardOptions { details: &'static str },
-    ConflictingSaveOptions { details: &'static str },
-    ConflictingCommands { details: &'static str },
-    MissingRequiredOption { option: &'static str, context: &'static str },
+    ConflictingInitialBoardOptions {
+        details: &'static str,
+    },
+    ConflictingSaveOptions {
+        details: &'static str,
+    },
+    ConflictingCommands {
+        details: &'static str,
+    },
+    MissingRequiredOption {
+        option: &'static str,
+        context: &'static str,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -653,8 +662,7 @@ where
     let initial_board = match (continue_path, load_board_path, initial_board_named) {
         (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
             return Err(ConfigError::ConflictingCommands {
-                details:
-                    "--continue is mutually exclusive with --load-board and --initial-board",
+                details: "--continue is mutually exclusive with --load-board and --initial-board",
             });
         }
         (None, Some(_), Some(_)) => {
@@ -689,9 +697,7 @@ where
             details: "--additional-iterations is only valid together with --continue",
         });
     }
-    if load_from.is_some()
-        && !matches!(initial_board, InitialBoardSpec::LoadFromFile { .. })
-    {
+    if load_from.is_some() && !matches!(initial_board, InitialBoardSpec::LoadFromFile { .. }) {
         return Err(ConfigError::ConflictingCommands {
             details: "--load-from is only valid together with --load-board",
         });
@@ -717,7 +723,6 @@ where
 }
 
 fn _unused_helper_for_doc_only() {}
-
 
 pub fn parse_max_iterations(value: &str) -> Result<usize, IterationParseError> {
     let trimmed = value.trim();

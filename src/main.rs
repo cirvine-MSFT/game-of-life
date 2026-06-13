@@ -118,6 +118,7 @@ fn print_help() {
 // -------- run -----------------------------------------------------------
 
 #[derive(Debug)]
+#[allow(dead_code)] // some variants are reserved for the streaming-board PR
 enum RunSimulationError {
     BoardCreation(InMemoryBoardCreationError),
     SnapshotRead(BoardSnapshotReadError),
@@ -194,8 +195,7 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
         InitialBoardSpec::LoadFromFile { .. } | InitialBoardSpec::ContinueFromRun { .. }
     ) {
         if let Some(cli_size) = config.board_size {
-            if (initial.board.width(), initial.board.height())
-                != (cli_size.width, cli_size.height)
+            if (initial.board.width(), initial.board.height()) != (cli_size.width, cli_size.height)
             {
                 return Err(RunSimulationError::BoardSizeMismatch {
                     from_file: (initial.board.width(), initial.board.height()),
@@ -294,19 +294,14 @@ struct ResolvedInitial {
     warning: Option<String>,
 }
 
-fn resolve_initial_board(
-    config: &SimulationConfig,
-) -> Result<ResolvedInitial, RunSimulationError> {
+fn resolve_initial_board(config: &SimulationConfig) -> Result<ResolvedInitial, RunSimulationError> {
     let run_id = RunId::generate();
     let random_seed = generate_random_seed();
     match &config.initial_board {
         InitialBoardSpec::Initializer(source) => {
             let size = config.effective_board_size();
-            let mut board = InMemoryBoard::try_new(
-                size.width,
-                size.height,
-                config.max_board_memory_bytes,
-            )?;
+            let mut board =
+                InMemoryBoard::try_new(size.width, size.height, config.max_board_memory_bytes)?;
             seed_with_initializer(*source, &mut board, random_seed);
             Ok(ResolvedInitial {
                 board,
@@ -325,18 +320,14 @@ fn resolve_initial_board(
                 config.max_input_file_bytes,
                 config.integrity,
             )?;
-            let warning = if matches!(snapshot_or_run.source_kind, FileKind::RunRecord) {
-                None
-            } else {
-                None
-            };
+            let _ = snapshot_or_run.source_kind; // reserved for future per-kind logic
             Ok(ResolvedInitial {
                 board: snapshot_or_run.board,
                 run_id,
                 random_seed,
                 continued_from: None,
                 effective_max_iterations: None,
-                warning,
+                warning: None,
             })
         }
         InitialBoardSpec::ContinueFromRun {
@@ -534,7 +525,7 @@ fn format_filename_timestamp(when: SystemTime) -> String {
     let iso = game_of_life::persistence::format_utc(when);
     // iso: 2026-06-12T22:55:20Z -> 20260612T225520Z
     let _ = seconds_since_epoch;
-    iso.replace('-', "").replace(':', "")
+    iso.replace(['-', ':'], "")
 }
 
 // -------- replay --------------------------------------------------------
@@ -588,8 +579,7 @@ fn replay(config: &ReplayConfig) -> Result<ReplayOutcome, ReplayError> {
 
     // Recreate the initial board using the same source label + seed.
     let initial_label = record.config.initial_board_source.as_str();
-    let mut board = if initial_label.starts_with("load:")
-        || initial_label.starts_with("continue:")
+    let mut board = if initial_label.starts_with("load:") || initial_label.starts_with("continue:")
     {
         // The initial board came from a file; we already have it captured in
         // the run record. Use it as-is.
@@ -597,8 +587,8 @@ fn replay(config: &ReplayConfig) -> Result<ReplayOutcome, ReplayError> {
     } else {
         // Stateless initializer: regenerate from the seed so we verify that
         // the initializer is still deterministic.
-        let source = InitialBoardSource::parse(initial_label.trim())
-            .unwrap_or(InitialBoardSource::Demo);
+        let source =
+            InitialBoardSource::parse(initial_label.trim()).unwrap_or(InitialBoardSource::Demo);
         let (w, h) = record.config.board_size;
         let mut b = InMemoryBoard::try_new(w, h, record.config.max_board_memory_bytes)?;
         seed_with_initializer(source, &mut b, record.config.random_seed);
@@ -609,9 +599,10 @@ fn replay(config: &ReplayConfig) -> Result<ReplayOutcome, ReplayError> {
     // that's a divergence (initializer drift between versions).
     let mut diffs = Vec::new();
     if board != record.initial_board {
-        diffs.push(format!(
+        diffs.push(
             "initial board differs: recorded initial board does not match the regenerated one (initializer drift or seed mismatch)"
-        ));
+                .to_string(),
+        );
         // Use the recorded board so the rest of the comparison is meaningful.
         board = record.initial_board.clone();
     }

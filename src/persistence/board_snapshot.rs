@@ -38,9 +38,7 @@ use std::time::SystemTime;
 use crate::board::{BoardEditor, CellCoordinate, CellState, InMemoryBoard};
 
 use super::errors::PersistenceIoError;
-use super::magic::{
-    sniff_from_reader, FileKind, MagicError, BOARD_SNAPSHOT_MAGIC, SCHEMA_VERSION,
-};
+use super::magic::{sniff_from_reader, FileKind, MagicError, BOARD_SNAPSHOT_MAGIC, SCHEMA_VERSION};
 use super::parser::{
     format_begin_fence, format_end_fence, parse_begin_fence, parse_end_fence, parse_field_line,
     strip_trailing_cr, ParseError, ParseLocation,
@@ -406,11 +404,12 @@ pub fn write_board_snapshot(
             }
         })?;
     let mut writer = io::BufWriter::new(file);
-    write_board_snapshot_to(&mut writer, snapshot)
-        .map_err(|e| BoardSnapshotWriteError::Io(PersistenceIoError::new(path, "writing snapshot", e)))?;
-    writer
-        .flush()
-        .map_err(|e| BoardSnapshotWriteError::Io(PersistenceIoError::new(path, "flushing snapshot", e)))?;
+    write_board_snapshot_to(&mut writer, snapshot).map_err(|e| {
+        BoardSnapshotWriteError::Io(PersistenceIoError::new(path, "writing snapshot", e))
+    })?;
+    writer.flush().map_err(|e| {
+        BoardSnapshotWriteError::Io(PersistenceIoError::new(path, "flushing snapshot", e))
+    })?;
     Ok(())
 }
 
@@ -518,12 +517,11 @@ pub fn read_board_snapshot(
                                 },
                             ));
                         }
-                        let parsed = parse_u32(value).ok_or_else(|| {
-                            ParseError::MalformedFieldLine {
+                        let parsed =
+                            parse_u32(value).ok_or_else(|| ParseError::MalformedFieldLine {
                                 location: location.clone(),
                                 line: format!("{key}: {value}"),
-                            }
-                        })?;
+                            })?;
                         if parsed != SCHEMA_VERSION {
                             return Err(BoardSnapshotReadError::Parse(
                                 ParseError::UnsupportedSchemaVersion {
@@ -618,13 +616,15 @@ pub(crate) fn read_board_block(
     // Read header lines until we hit the first non-header content (the grid).
     loop {
         let location = cursor.current_location();
-        let raw = cursor.next_raw()?.ok_or_else(|| ParseError::UnexpectedEnd {
-            location: cursor.eof_location(),
-            expected: format!(
-                "board header lines followed by '{}'",
-                format_end_fence(expected_label)
-            ),
-        })?;
+        let raw = cursor
+            .next_raw()?
+            .ok_or_else(|| ParseError::UnexpectedEnd {
+                location: cursor.eof_location(),
+                expected: format!(
+                    "board header lines followed by '{}'",
+                    format_end_fence(expected_label)
+                ),
+            })?;
         let line = strip_trailing_cr(&raw).trim_end();
         if line.is_empty() {
             // Blank inside a board block is not allowed; treat as a malformed
@@ -683,12 +683,13 @@ pub(crate) fn read_board_block(
                             field: "alive_count".to_string(),
                         }));
                     }
-                    header_alive = Some(parse_usize(value).ok_or_else(|| {
-                        ParseError::MalformedFieldLine {
-                            location: location.clone(),
-                            line: format!("alive_count: {value}"),
-                        }
-                    })?);
+                    header_alive =
+                        Some(
+                            parse_usize(value).ok_or_else(|| ParseError::MalformedFieldLine {
+                                location: location.clone(),
+                                line: format!("alive_count: {value}"),
+                            })?,
+                        );
                     continue;
                 }
                 "dead_count" => {
@@ -698,12 +699,13 @@ pub(crate) fn read_board_block(
                             field: "dead_count".to_string(),
                         }));
                     }
-                    header_dead = Some(parse_usize(value).ok_or_else(|| {
-                        ParseError::MalformedFieldLine {
-                            location: location.clone(),
-                            line: format!("dead_count: {value}"),
-                        }
-                    })?);
+                    header_dead =
+                        Some(
+                            parse_usize(value).ok_or_else(|| ParseError::MalformedFieldLine {
+                                location: location.clone(),
+                                line: format!("dead_count: {value}"),
+                            })?,
+                        );
                     continue;
                 }
                 _ => {
@@ -711,10 +713,12 @@ pub(crate) fn read_board_block(
                     // since a grid line starting with `.` or `#` will never
                     // contain a `:` (unless it's malformed, which falls
                     // through to the grid character check below anyway).
-                    return Err(BoardSnapshotReadError::Parse(ParseError::MalformedFieldLine {
-                        location,
-                        line: line.to_string(),
-                    }));
+                    return Err(BoardSnapshotReadError::Parse(
+                        ParseError::MalformedFieldLine {
+                            location,
+                            line: line.to_string(),
+                        },
+                    ));
                 }
             }
         }
@@ -760,11 +764,10 @@ pub(crate) fn read_board_block(
                 expected: format!("'{}'", format_end_fence(expected_label)),
             })?;
         let end_line = strip_trailing_cr(&end_line).trim_end();
-        let end_label =
-            parse_end_fence(end_line).ok_or_else(|| ParseError::MalformedFence {
-                location: end_location.clone(),
-                line: end_line.to_string(),
-            })?;
+        let end_label = parse_end_fence(end_line).ok_or_else(|| ParseError::MalformedFence {
+            location: end_location.clone(),
+            line: end_line.to_string(),
+        })?;
         if end_label != expected_label {
             return Err(BoardSnapshotReadError::Parse(
                 ParseError::UnexpectedFenceLabel {
@@ -894,9 +897,8 @@ pub(crate) fn slurp_with_size_guard(
     max_bytes: usize,
 ) -> Result<String, BoardSnapshotReadError> {
     let path = path.as_ref();
-    let metadata = std::fs::metadata(path).map_err(|e| {
-        PersistenceIoError::new(path, "stat'ing input file", e)
-    })?;
+    let metadata = std::fs::metadata(path)
+        .map_err(|e| PersistenceIoError::new(path, "stat'ing input file", e))?;
     let actual_bytes = metadata.len();
     if actual_bytes > max_bytes as u64 {
         return Err(BoardSnapshotReadError::FileTooLarge {
@@ -905,8 +907,8 @@ pub(crate) fn slurp_with_size_guard(
             limit_bytes: max_bytes,
         });
     }
-    let file = File::open(path)
-        .map_err(|e| PersistenceIoError::new(path, "opening input file", e))?;
+    let file =
+        File::open(path).map_err(|e| PersistenceIoError::new(path, "opening input file", e))?;
     let mut reader = BufReader::new(file);
     let mut body = String::with_capacity(actual_bytes as usize);
     reader
@@ -1039,11 +1041,19 @@ mod tests {
 
     fn board_from_grid(lines: &[&str]) -> InMemoryBoard {
         let height = lines.len();
-        let width = if height > 0 { lines[0].chars().count() } else { 0 };
+        let width = if height > 0 {
+            lines[0].chars().count()
+        } else {
+            0
+        };
         let mut board = InMemoryBoard::new(width, height);
         for (y, row) in lines.iter().enumerate() {
             for (x, ch) in row.chars().enumerate() {
-                let state = if ch == '#' { CellState::Alive } else { CellState::Dead };
+                let state = if ch == '#' {
+                    CellState::Alive
+                } else {
+                    CellState::Dead
+                };
                 board.set_cell(CellCoordinate::new(x, y), state).ok();
             }
         }
@@ -1120,10 +1130,8 @@ mod tests {
     fn write_then_read_snapshot_via_disk() {
         let board = board_from_grid(&["...", ".#.", "..."]);
         let snap = BoardSnapshot::for_board(board.clone());
-        let dir = std::env::temp_dir().join(format!(
-            "gol_snapshot_round_trip_{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("gol_snapshot_round_trip_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("snap.gol");
         let _ = std::fs::remove_file(&path);
@@ -1136,10 +1144,8 @@ mod tests {
 
     #[test]
     fn negative_write_refuses_to_overwrite_existing() {
-        let dir = std::env::temp_dir().join(format!(
-            "gol_snapshot_overwrite_{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("gol_snapshot_overwrite_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("collision.gol");
         let _ = std::fs::remove_file(&path);

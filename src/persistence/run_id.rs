@@ -117,12 +117,11 @@ pub fn parse_run_id(value: &str) -> Result<RunId, RunIdParseError> {
             value: value.to_string(),
             position: str_index,
         })?;
-        let lo = decode_hex_nibble(bytes[str_index + 1]).ok_or_else(|| {
-            RunIdParseError::NonHex {
+        let lo =
+            decode_hex_nibble(bytes[str_index + 1]).ok_or_else(|| RunIdParseError::NonHex {
                 value: value.to_string(),
                 position: str_index + 1,
-            }
-        })?;
+            })?;
         out[out_index] = (hi << 4) | lo;
     }
     Ok(RunId(out))
@@ -224,10 +223,7 @@ mod tests {
             0x7b, 0x3a, 0x1f, 0x0c, 0x4d, 0x2e, 0x4a, 0x51, 0x9c, 0x5e, 0x2f, 0x8c, 0x3a, 0x1b,
             0x9d, 0x77,
         ]);
-        assert_eq!(
-            format_run_id(&id),
-            "7b3a1f0c-4d2e-4a51-9c5e-2f8c3a1b9d77"
-        );
+        assert_eq!(format_run_id(&id), "7b3a1f0c-4d2e-4a51-9c5e-2f8c3a1b9d77");
     }
 
     #[test]

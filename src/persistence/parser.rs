@@ -206,14 +206,13 @@ impl std::error::Error for ParseError {}
 ///
 /// Returns `Err(MalformedFieldLine)` if the line has no colon or the key is
 /// empty.
-pub fn parse_field_line<'a>(
-    location: ParseLocation,
-    line: &'a str,
-) -> Result<(&'a str, &'a str), ParseError> {
-    let colon = line.find(':').ok_or_else(|| ParseError::MalformedFieldLine {
-        location: location.clone(),
-        line: line.to_string(),
-    })?;
+pub fn parse_field_line(location: ParseLocation, line: &str) -> Result<(&str, &str), ParseError> {
+    let colon = line
+        .find(':')
+        .ok_or_else(|| ParseError::MalformedFieldLine {
+            location: location.clone(),
+            line: line.to_string(),
+        })?;
     let key = line[..colon].trim();
     if key.is_empty() {
         return Err(ParseError::MalformedFieldLine {

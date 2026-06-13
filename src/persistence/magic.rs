@@ -137,9 +137,8 @@ fn truncate_for_display(value: &str, max_chars: usize) -> String {
 /// returns. It does not validate any content beyond the magic line.
 pub fn sniff_file_kind(path: impl AsRef<Path>) -> Result<FileKind, MagicError> {
     let path = path.as_ref();
-    let file = File::open(path).map_err(|e| {
-        MagicError::Io(PersistenceIoError::new(path, "opening file for sniff", e))
-    })?;
+    let file = File::open(path)
+        .map_err(|e| MagicError::Io(PersistenceIoError::new(path, "opening file for sniff", e)))?;
     let mut reader = BufReader::new(file);
     sniff_from_reader(path, &mut reader)
 }
@@ -291,7 +290,7 @@ mod tests {
         // and we trigger EmptyFile), but whose total length is well past the peek
         // limit. The sniffer should not block trying to consume the whole file.
         let mut payload = vec![b'\n'];
-        payload.extend(std::iter::repeat(b'X').take(MAX_MAGIC_PEEK_BYTES * 100));
+        payload.extend(std::iter::repeat_n(b'X', MAX_MAGIC_PEEK_BYTES * 100));
         let mut cursor = Cursor::new(payload);
         let err = sniff_from_reader("dummy.gol", &mut cursor).unwrap_err();
         assert!(matches!(err, MagicError::EmptyFile { .. }));

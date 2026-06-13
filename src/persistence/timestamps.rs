@@ -88,8 +88,10 @@ pub fn parse_utc(value: &str) -> Result<SystemTime, TimestampParseError> {
         });
     }
 
-    let seconds_since_epoch =
-        days_from_civil(year, month as u32, day as u32) * 86_400 + hour * 3600 + minute * 60 + second;
+    let seconds_since_epoch = days_from_civil(year, month as u32, day as u32) * 86_400
+        + hour * 3600
+        + minute * 60
+        + second;
     if seconds_since_epoch < 0 {
         return Err(TimestampParseError::BeforeUnixEpoch {
             value: value.to_string(),
@@ -115,33 +117,14 @@ fn parse_int(s: &str, field: &'static str, original: &str) -> Result<i64, Timest
 /// Errors when parsing a UTC timestamp.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimestampParseError {
-    WrongLength {
-        value: String,
-        actual: usize,
-    },
-    MissingDateSeparator {
-        value: String,
-    },
-    MissingDateTimeSeparator {
-        value: String,
-    },
-    MissingTimeSeparator {
-        value: String,
-    },
-    MissingZuluSuffix {
-        value: String,
-    },
-    NonNumericField {
-        value: String,
-        field: &'static str,
-    },
-    FieldOutOfRange {
-        value: String,
-        field: &'static str,
-    },
-    BeforeUnixEpoch {
-        value: String,
-    },
+    WrongLength { value: String, actual: usize },
+    MissingDateSeparator { value: String },
+    MissingDateTimeSeparator { value: String },
+    MissingTimeSeparator { value: String },
+    MissingZuluSuffix { value: String },
+    NonNumericField { value: String, field: &'static str },
+    FieldOutOfRange { value: String, field: &'static str },
+    BeforeUnixEpoch { value: String },
 }
 
 impl fmt::Display for TimestampParseError {

@@ -38,9 +38,8 @@ pub use run_id::{format_run_id, parse_run_id, short_run_id, RunId, RunIdParseErr
 pub use run_record::{
     board_grid_hash, extract_board_from_run, read_run_record, read_run_record_default,
     read_run_record_with_warnings, write_run_record, ContentHashMode, ExtractBoardError,
-    ExtractWhich, LoadedRunRecord, RunRecord, RunRecordConfig, RunRecordReadError,
-    RunRecordResult, RunRecordWriteError, FINAL_BOARD_LABEL, INITIAL_BOARD_LABEL,
-    RECOGNIZED_STATUSES, TOOL_VERSION,
+    ExtractWhich, LoadedRunRecord, RunRecord, RunRecordConfig, RunRecordReadError, RunRecordResult,
+    RunRecordWriteError, FINAL_BOARD_LABEL, INITIAL_BOARD_LABEL, RECOGNIZED_STATUSES, TOOL_VERSION,
 };
 pub use timestamps::{format_utc, parse_utc, TimestampParseError};
 

@@ -378,9 +378,15 @@ impl From<BoardSnapshotReadError> for RunRecordReadError {
         match value {
             BoardSnapshotReadError::Io(e) => RunRecordReadError::Io(e),
             BoardSnapshotReadError::Magic(e) => RunRecordReadError::Magic(e),
-            BoardSnapshotReadError::UnexpectedFileKind { path, expected, actual } => {
-                RunRecordReadError::UnexpectedFileKind { path, expected, actual }
-            }
+            BoardSnapshotReadError::UnexpectedFileKind {
+                path,
+                expected,
+                actual,
+            } => RunRecordReadError::UnexpectedFileKind {
+                path,
+                expected,
+                actual,
+            },
             BoardSnapshotReadError::InvalidTimestamp(e) => RunRecordReadError::InvalidTimestamp(e),
             BoardSnapshotReadError::Parse(e) => RunRecordReadError::Parse(e),
             BoardSnapshotReadError::LoadedBoardSize(e) => RunRecordReadError::LoadedBoardSize(e),
@@ -442,7 +448,12 @@ pub fn write_run_record(
             e,
         ))
     })?;
-    writeln!(writer, "{CONTENT_HASH_FIELD}: {}", format_hash(content_hash)).map_err(|e| {
+    writeln!(
+        writer,
+        "{CONTENT_HASH_FIELD}: {}",
+        format_hash(content_hash)
+    )
+    .map_err(|e| {
         RunRecordWriteError::Io(PersistenceIoError::new(path, "writing content_hash", e))
     })?;
     writer.flush().map_err(|e| {
@@ -783,12 +794,13 @@ fn parse_run_header(cursor: &mut LineCursor<'_>) -> Result<RunHeader, RunRecordR
                     }
                     .into());
                 }
-                run_id = Some(parse_run_id(value).map_err(|_| {
-                    RunRecordReadError::MalformedRunId {
-                        location: location.clone(),
-                        value: value.to_string(),
-                    }
-                })?);
+                run_id =
+                    Some(
+                        parse_run_id(value).map_err(|_| RunRecordReadError::MalformedRunId {
+                            location: location.clone(),
+                            value: value.to_string(),
+                        })?,
+                    );
             }
             "schema_version" => {
                 if schema_version.is_some() {
@@ -919,12 +931,12 @@ fn parse_config_section(
                 continued_from = Some(if value.is_empty() {
                     None
                 } else {
-                    Some(parse_run_id(value).map_err(|_| {
-                        RunRecordReadError::MalformedRunId {
+                    Some(
+                        parse_run_id(value).map_err(|_| RunRecordReadError::MalformedRunId {
                             location: location.clone(),
                             value: value.to_string(),
-                        }
-                    })?)
+                        })?,
+                    )
                 });
             }
             _ => {
@@ -1039,22 +1051,24 @@ fn parse_result_section(
             "total_births" => total_births = Some(parse_u64_field(value, key, &location)?),
             "total_deaths" => total_deaths = Some(parse_u64_field(value, key, &location)?),
             "initial_board_hash" => {
-                initial_board_hash = Some(parse_hash(value).map_err(|_| {
-                    RunRecordReadError::MalformedField {
-                        location: location.clone(),
-                        field: key.to_string(),
-                        value: value.to_string(),
-                    }
-                })?);
+                initial_board_hash =
+                    Some(
+                        parse_hash(value).map_err(|_| RunRecordReadError::MalformedField {
+                            location: location.clone(),
+                            field: key.to_string(),
+                            value: value.to_string(),
+                        })?,
+                    );
             }
             "final_board_hash" => {
-                final_board_hash = Some(parse_hash(value).map_err(|_| {
-                    RunRecordReadError::MalformedField {
-                        location: location.clone(),
-                        field: key.to_string(),
-                        value: value.to_string(),
-                    }
-                })?);
+                final_board_hash =
+                    Some(
+                        parse_hash(value).map_err(|_| RunRecordReadError::MalformedField {
+                            location: location.clone(),
+                            field: key.to_string(),
+                            value: value.to_string(),
+                        })?,
+                    );
             }
             _ => {
                 return Err(ParseError::MalformedFieldLine {
@@ -1102,11 +1116,10 @@ fn expect_section_header(
             expected: format!("[{expected}]"),
         })?;
     let location = cursor.last_consumed_location();
-    let actual =
-        parse_section_header(&line).ok_or_else(|| ParseError::MalformedSectionHeader {
-            location: location.clone(),
-            line: line.clone(),
-        })?;
+    let actual = parse_section_header(&line).ok_or_else(|| ParseError::MalformedSectionHeader {
+        location: location.clone(),
+        line: line.clone(),
+    })?;
     if actual != expected {
         return Err(ParseError::UnexpectedSection {
             location,
@@ -1413,7 +1426,10 @@ mod tests {
         let body = std::fs::read_to_string(&path).unwrap();
         // Replace a '.' on the final board with '#' to corrupt content.
         let corrupted = body.replacen("...\n.#.\n...", "...\n##.\n...", 1);
-        assert_ne!(corrupted, body, "test fixture must produce a non-trivial mutation");
+        assert_ne!(
+            corrupted, body,
+            "test fixture must produce a non-trivial mutation"
+        );
         std::fs::write(&path, corrupted).unwrap();
         let err = read_run_record(
             &path,
@@ -1435,8 +1451,11 @@ mod tests {
         let corrupted = body.replacen("...\n.#.\n...", "...\n##.\n...", 1);
         // alive_count was 1 -> 2, dead_count was 8 -> 7; mismatch breaks
         // reading. Fix the counts so we test integrity, not header parsing.
-        let corrupted = corrupted
-            .replacen("alive_count: 1\ndead_count: 8", "alive_count: 2\ndead_count: 7", 1);
+        let corrupted = corrupted.replacen(
+            "alive_count: 1\ndead_count: 8",
+            "alive_count: 2\ndead_count: 7",
+            1,
+        );
         std::fs::write(&path, corrupted).unwrap();
         let loaded = read_run_record_with_warnings(
             &path,
@@ -1518,10 +1537,8 @@ mod tests {
 
     #[test]
     fn negative_write_refuses_to_overwrite_existing() {
-        let dir = std::env::temp_dir().join(format!(
-            "gol_run_record_overwrite_{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("gol_run_record_overwrite_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("collision.gol");
         let _ = std::fs::remove_file(&path);
