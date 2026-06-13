@@ -36,6 +36,9 @@ cargo build --release
 # Run console application
 .\target\release\game-of-life.exe
 
+# Run the smoke test the same way CI does (requires Git Bash on Windows)
+bash ./scripts/smoke-test.sh
+
 # Show CLI options
 .\target\release\game-of-life.exe --help
 
@@ -58,6 +61,9 @@ cargo build --release
 
 # Run console application
 ./target/release/game-of-life
+
+# Run the smoke test the same way CI does
+./scripts/smoke-test.sh
 
 # Show CLI options
 ./target/release/game-of-life --help
