@@ -129,7 +129,7 @@ The repo ships with a small `examples/` directory of hand-curated `.gol` files:
 Two file types share one parser pair (see [docs/design.md](docs/design.md) for the full spec):
 
 - **Run record** (`GOL-RUN-RECORD v1`): auto-saved at the end of every run. Captures the configuration, run statistics, the initial board, and the final board. Protected by a `content_hash` trailer.
-- **Board snapshot** (`GOL-BOARD-SNAPSHOT v1`): a standalone file containing just one board block plus a tiny header. Intentionally **hash-free** so researchers can hand-craft and hand-edit them. Use `--extract-board` to make one from a run record.
+- **Board snapshot** (`GOL-BOARD-SNAPSHOT v1`): a standalone file containing just one board block plus a tiny header. Intentionally **hash-free** so users can hand-craft and hand-edit them. Use `--extract-board` to make one from a run record.
 
 Sample workflow for crafting a new board from a prior run:
 

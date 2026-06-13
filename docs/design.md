@@ -179,7 +179,7 @@ Cargo.toml     - Project manifest with library and binary targets
 
 ## Persistence Design
 
-Every successful run auto-saves a **run record** to disk. The same parser handles two related file types so researchers can extract, edit, and share board states without losing the audit trail.
+Every successful run auto-saves a **run record** to disk. The same parser handles two related file types so users can extract, edit, and share board states without losing the audit trail.
 
 ### File types
 
@@ -206,7 +206,7 @@ Every file is sniffed before it's slurped:
 
 ### Integrity (`content_hash`)
 
-Run records carry a `content_hash:` trailer at the end of the file. Threat model is explicit: accidental edits, partial writes, bit flips. **Not adversarial tamper detection** — a 64-bit non-crypto FNV-1a hash is right-sized for "researcher made a typo in vim".
+Run records carry a `content_hash:` trailer at the end of the file. Threat model is explicit: accidental edits, partial writes, bit flips. **Not adversarial tamper detection** — a 64-bit non-crypto FNV-1a hash is right-sized for "user made a typo in vim".
 
 - The writer computes the hash over the canonical UTF-8 bytes of everything in the file from the magic line up to (and including) the newline preceding the trailer, then appends the trailer.
 - The reader **canonicalizes** the file in-memory before hashing: LF line endings, trimmed trailing whitespace per line, exactly one trailing newline. This means a Windows editor saving the file in CRLF does not break verification.

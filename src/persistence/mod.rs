@@ -6,7 +6,7 @@
 //!   a run, capturing the configuration, run statistics, the initial board, and
 //!   the final board. Protected by a `content_hash` trailer.
 //! - **Board snapshot** (`GOL-BOARD-SNAPSHOT v1`): a standalone, hash-free,
-//!   freely-editable file containing just one board block. Researchers can craft
+//!   freely-editable file containing just one board block. Users can craft
 //!   these by hand or extract them from a run record via the `--extract-board`
 //!   command.
 //!

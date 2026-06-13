@@ -26,7 +26,7 @@
 //! ```
 //!
 //! Standalone snapshots are intentionally hash-free and freely editable; that
-//! is the supported workflow for researchers who want to craft new boards
+//! is the supported workflow for users who want to craft new boards
 //! from existing ones.
 
 use std::fmt;
