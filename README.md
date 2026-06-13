@@ -116,6 +116,13 @@ In addition to a normal run, the binary exposes three standalone verbs:
 | `--replay <PATH>` | Re-execute a saved run record and diff its final board and key stats against the captured values. Exits 0 on match, non-zero on divergence with a structured diff on stderr. |
 | `--extract-board <PATH> --output <SNAPSHOT-PATH>` | Extract one of the embedded board blocks (`INITIAL` or `FINAL`, selected via `--load-from`) from a run record and write it as a standalone, hash-free board snapshot. Use this to craft new starting boards from existing runs. |
 
+### Examples
+
+The repo ships with a small `examples/` directory of hand-curated `.gol` files:
+
+- `examples/patterns/` — happy-path snapshots you can load directly (block, blinker, glider, R-pentomino). `--load-board examples/patterns/glider.gol --max-iterations 50` is a good first run.
+- `examples/negative/` — **intentionally malformed files** that demonstrate the reader's error UX. Each one triggers a different error class (magic mismatch, truncated grid, bad cell character, count mismatch, unsupported encoding). See [`examples/README.md`](examples/README.md) for the full table.
+
 ### Persistence file format
 
 Two file types share one parser pair (see [docs/design.md](docs/design.md) for the full spec):
