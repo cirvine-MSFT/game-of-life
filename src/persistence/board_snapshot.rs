@@ -65,8 +65,6 @@ pub struct BoardSnapshot {
 }
 
 impl BoardSnapshot {
-    /// Builds a snapshot wrapping the given board, with the current schema
-    /// version and a `created_at` of `SystemTime::now()`.
     pub fn for_board(board: InMemoryBoard) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
@@ -76,7 +74,6 @@ impl BoardSnapshot {
     }
 }
 
-/// Failure modes when writing a board snapshot or board block.
 #[derive(Debug)]
 pub enum BoardSnapshotWriteError {
     Io(PersistenceIoError),
@@ -105,7 +102,6 @@ impl std::error::Error for BoardSnapshotWriteError {
     }
 }
 
-/// Failure modes when reading a board snapshot or board block.
 #[derive(Debug)]
 pub enum BoardSnapshotReadError {
     Io(PersistenceIoError),

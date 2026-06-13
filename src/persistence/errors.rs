@@ -7,8 +7,6 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-/// An I/O failure that occurred while opening, reading, or writing a
-/// persistence file.
 #[derive(Debug)]
 pub struct PersistenceIoError {
     pub path: PathBuf,

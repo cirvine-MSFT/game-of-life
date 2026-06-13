@@ -10,7 +10,6 @@
 const FNV1A_64_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV1A_64_PRIME: u64 = 0x100_0000_01b3;
 
-/// Computes the FNV-1a 64-bit hash of the given bytes.
 pub fn fnv1a_64(bytes: &[u8]) -> u64 {
     let mut hash = FNV1A_64_OFFSET_BASIS;
     for &byte in bytes {

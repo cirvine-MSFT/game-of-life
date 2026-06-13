@@ -20,6 +20,19 @@ Every change must satisfy:
 - [ ] `cargo build --release` succeeds
 - [ ] Console binary runs without crash: `./target/release/game-of-life`
 
+## Comment Style
+
+Comments must earn their place. The rules:
+
+1. **No comments that just restate what the code or signature already says.** If the doc paraphrases the function name, types, or body, delete it — Rust signatures and well-named symbols carry that information by themselves.
+2. **Do comment WHY.** Design rationale, threat models, performance tradeoffs, historical decisions, and non-obvious gotchas all belong in comments. The reader can see *what* the code does; you're there to explain *why it's that way*.
+3. **Do document non-obvious contracts.** Preconditions, postconditions, panic conditions, ordering requirements, and accepted input shapes are not always inferable from the signature and are worth a comment.
+4. **If the code is hard to read, fix the code first.** Reach for comments only when restructuring/renaming wouldn't have made the code self-explanatory.
+
+Examples that pass: explaining why a `--continue` cumulative max is rejected when `<= source.iterations_run`; documenting that `parse_run_id` deliberately skips v4-bit enforcement so synthetic test IDs round-trip; noting that the file integrity hash is for accidental edits and bit flips, not adversarial tampering.
+
+Examples that fail and should be removed: `/// Builds a snapshot wrapping the given board.` over `fn for_board(board) -> Self`; `/// Number of cells that transitioned from dead to alive` over a `pub births: u64` field.
+
 ## What Can Be Changed
 
 ✅ **Safe to modify:**

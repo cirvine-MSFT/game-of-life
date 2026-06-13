@@ -2,7 +2,6 @@
 
 use super::advance_outcome::AdvanceOutcome;
 
-/// Snapshot of statistics collected over an entire run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RunStatistics {
     pub initial_alive_count: u64,
@@ -22,10 +21,7 @@ pub struct RunStatistics {
 /// by this version of the writer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStatus {
-    /// The simulation ran for the configured `max_iterations` without
-    /// terminating early.
     MaxIterations,
-    /// All cells became dead and the run early-stopped.
     Extinct,
 }
 
@@ -38,8 +34,10 @@ impl RunStatus {
     }
 }
 
-/// Builds a `RunStatistics` by observing one `AdvanceOutcome` per generation
-/// and a final terminal status.
+/// Collector for `RunStatistics`. Designed to be fed exactly one
+/// `AdvanceOutcome` per generation in order; `finalize` consumes it and tags
+/// the terminal status. Generation numbering starts at 1 for the first
+/// `record` call — generation 0 is the initial board, captured at construction.
 #[derive(Debug, Clone)]
 pub struct RunStatisticsCollector {
     initial_alive_count: u64,
@@ -54,8 +52,6 @@ pub struct RunStatisticsCollector {
 }
 
 impl RunStatisticsCollector {
-    /// Begins a collector for a run whose initial board has the given alive
-    /// count.
     pub fn starting_from(initial_alive_count: u64) -> Self {
         Self {
             initial_alive_count,
@@ -70,8 +66,6 @@ impl RunStatisticsCollector {
         }
     }
 
-    /// Records a single generation outcome. Generation numbering starts at 1
-    /// for the first call (generation 0 is the initial board).
     pub fn record(&mut self, outcome: AdvanceOutcome) {
         self.iterations_run += 1;
         self.total_births += outcome.births;
@@ -87,19 +81,14 @@ impl RunStatisticsCollector {
         }
     }
 
-    /// Number of generations recorded so far. Useful when deciding whether
-    /// to early-stop on extinction.
     pub fn iterations_run(&self) -> u64 {
         self.iterations_run
     }
 
-    /// Most recently observed alive count.
     pub fn final_alive_count(&self) -> u64 {
         self.final_alive_count
     }
 
-    /// Finalizes into an immutable `RunStatistics` value, tagging the terminal
-    /// status.
     pub fn finalize(self, status: RunStatus) -> RunStatistics {
         RunStatistics {
             initial_alive_count: self.initial_alive_count,

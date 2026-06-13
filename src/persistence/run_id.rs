@@ -13,12 +13,12 @@ use std::hash::{BuildHasher, Hasher};
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// A 128-bit run identifier, formatted as a UUID v4.
+/// A 128-bit run identifier serialized as a UUID v4 in canonical 8-4-4-4-12
+/// lowercase hex. Equality / hashing operate on the raw bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RunId([u8; 16]);
 
 impl RunId {
-    /// Generates a fresh UUID v4 from system entropy.
     pub fn generate() -> Self {
         let mut bytes = [0u8; 16];
         fill_with_pseudo_random_bytes(&mut bytes);
@@ -37,8 +37,8 @@ impl RunId {
         &self.0
     }
 
-    /// Returns the first 8 hex characters, used for human-readable filename
-    /// prefixes.
+    /// First 8 hex chars of the canonical form. Used in the auto-generated
+    /// run-record filename so a `ls runs/` listing is at-a-glance scannable.
     pub fn short(&self) -> String {
         short_run_id(self)
     }
@@ -63,7 +63,6 @@ pub fn format_run_id(id: &RunId) -> String {
     )
 }
 
-/// Returns the first 8 hex characters of the canonical form.
 pub fn short_run_id(id: &RunId) -> String {
     let s = format_run_id(id);
     s[..8].to_string()
@@ -71,8 +70,9 @@ pub fn short_run_id(id: &RunId) -> String {
 
 /// Parses a canonical 8-4-4-4-12 lowercase or uppercase hex UUID into a `RunId`.
 ///
-/// We accept any UUID-shaped value; we do not enforce v4 version/variant bits
-/// on parse so that round-trips with arbitrary correctly-formatted IDs work.
+/// Intentionally does NOT enforce v4 version/variant bits on parse: round-trips
+/// of arbitrary correctly-formatted IDs must work so tests and synthetic
+/// fixtures can use stable, human-typed IDs.
 pub fn parse_run_id(value: &str) -> Result<RunId, RunIdParseError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {

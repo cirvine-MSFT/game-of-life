@@ -224,9 +224,7 @@ pub fn parse_field_line(location: ParseLocation, line: &str) -> Result<(&str, &s
     Ok((key, value))
 }
 
-/// Recognizes a line of the form `[section]`. Returns `Some(section_name)`
-/// on match, `None` otherwise. The returned name is trimmed but case is
-/// preserved.
+/// Recognizes `[section]`. Trimmed inside; case preserved.
 pub fn parse_section_header(line: &str) -> Option<&str> {
     let trimmed = line.trim();
     let inner = trimmed.strip_prefix('[')?.strip_suffix(']')?;
@@ -237,14 +235,12 @@ pub fn parse_section_header(line: &str) -> Option<&str> {
     Some(inner_trimmed)
 }
 
-/// Recognizes a `----- BEGIN <LABEL> -----` line. Returns `Some(label)` on
-/// match.
+/// Recognizes `----- BEGIN <LABEL> -----`.
 pub fn parse_begin_fence(line: &str) -> Option<&str> {
     parse_fence(line, "BEGIN")
 }
 
-/// Recognizes a `----- END <LABEL> -----` line. Returns `Some(label)` on
-/// match.
+/// Recognizes `----- END <LABEL> -----`.
 pub fn parse_end_fence(line: &str) -> Option<&str> {
     parse_fence(line, "END")
 }
@@ -262,12 +258,10 @@ fn parse_fence<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     }
 }
 
-/// Renders the canonical BEGIN fence line for a given label.
 pub fn format_begin_fence(label: &str) -> String {
     format!("----- BEGIN {label} -----")
 }
 
-/// Renders the canonical END fence line for a given label.
 pub fn format_end_fence(label: &str) -> String {
     format!("----- END {label} -----")
 }
