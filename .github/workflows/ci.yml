@@ -79,11 +79,23 @@ jobs:
       - name: Console binary smoke test
         shell: bash
         run: |
+          set -euo pipefail
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            ./target/release/game-of-life.exe > console_output.txt
+            BIN="./target/release/game-of-life.exe"
           else
-            ./target/release/game-of-life > console_output.txt
+            BIN="./target/release/game-of-life"
           fi
+
+          RUNS_DIR=$(mktemp -d)
+          "$BIN" --board-size 5x5 --max-iterations 5 --runs-dir "$RUNS_DIR" > console_output.txt
           test -s console_output.txt
           grep -q "Generation 0:" console_output.txt
+          grep -q "Saved run record:" console_output.txt
           grep -q "^[.#]*$" console_output.txt
+
+          # Replay round-trip catches regressions in both write and read paths.
+          RECORD=$(ls "$RUNS_DIR"/*.gol | head -n 1)
+          "$BIN" --replay "$RECORD" > replay_output.txt
+          grep -q "Replay matched" replay_output.txt
+
+          rm -rf "$RUNS_DIR"
