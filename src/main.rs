@@ -12,9 +12,9 @@ use std::{env, fs, process};
 
 use game_of_life::persistence::{
     board_grid_hash, extract_board_from_run, read_board_snapshot, read_run_record_with_warnings,
-    write_board_snapshot, write_run_record, BoardSnapshot, BoardSnapshotReadError,
-    ExtractBoardError, ExtractWhich, FileKind, RunId, RunRecord, RunRecordConfig,
-    RunRecordReadError, RunRecordResult, RunRecordWriteError, SCHEMA_VERSION, TOOL_VERSION,
+    write_run_record, BoardSnapshot, BoardSnapshotReadError, ExtractBoardError, ExtractWhich,
+    FileKind, RunId, RunRecord, RunRecordConfig, RunRecordReadError, RunRecordResult,
+    RunRecordWriteError, SCHEMA_VERSION, TOOL_VERSION,
 };
 use game_of_life::stats::{AdvanceOutcome, RunStatisticsCollector};
 use game_of_life::{
@@ -201,6 +201,12 @@ impl From<RunRecordWriteError> for RunSimulationError {
 }
 
 fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
+    // Surface any non-fatal warnings the parser collected (e.g. one flag
+    // silently overridden by a higher-precedence one).
+    for warning in &config.warnings {
+        eprintln!("{warning}");
+    }
+
     let initial = resolve_initial_board(&config)?;
     if matches!(
         &config.initial_board,
@@ -726,11 +732,3 @@ impl std::fmt::Display for ExtractBoardCliError {
 }
 
 impl std::error::Error for ExtractBoardCliError {}
-
-// Suppress unused warnings for items used only conditionally.
-#[allow(dead_code)]
-fn _unused_to_silence_imports(_b: BoardSnapshot) {}
-#[allow(dead_code)]
-fn _unused_write_snapshot(path: &Path, snap: &BoardSnapshot) -> Result<(), String> {
-    write_board_snapshot(path, snap).map_err(|e| e.to_string())
-}

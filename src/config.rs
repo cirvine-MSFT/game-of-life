@@ -85,6 +85,11 @@ pub struct SimulationConfig {
     pub save: SaveSettings,
     pub integrity: IntegrityMode,
     pub max_input_file_bytes: usize,
+    /// Non-fatal warnings raised during CLI parsing (e.g. an option that was
+    /// silently overridden by a higher-precedence option). `main.rs` prints
+    /// these to stderr before starting the run so the user sees them in
+    /// context.
+    pub warnings: Vec<String>,
 }
 
 impl Default for SimulationConfig {
@@ -97,6 +102,7 @@ impl Default for SimulationConfig {
             save: SaveSettings::default(),
             integrity: IntegrityMode::Enforce,
             max_input_file_bytes: persistence::DEFAULT_MAX_INPUT_FILE_BYTES,
+            warnings: Vec::new(),
         }
     }
 }
@@ -676,18 +682,19 @@ where
 
     // From here on, it's a Run command. Decide initial-board spec.
     let mut continue_used = false;
-    let load_board_path_clone = load_board_path.clone();
+    let mut warnings: Vec<String> = Vec::new();
     let initial_board = match (continue_path, load_board_path, initial_board_named) {
         (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
             return Err(ConfigError::ConflictingCommands {
                 details: "--continue is mutually exclusive with --load-board and --initial-board",
             });
         }
-        (None, Some(_), Some(_)) => {
-            // --load-board wins; flag is informational. We carry forward the
-            // load spec; main.rs surfaces the warning to stderr.
+        (None, Some(path), Some(_)) => {
+            warnings.push(
+                "Warning: --load-board takes precedence; --initial-board ignored.".to_string(),
+            );
             InitialBoardSpec::LoadFromFile {
-                path: load_board_path_clone.expect("load_board_path was Some"),
+                path,
                 from: load_from,
             }
         }
@@ -751,10 +758,9 @@ where
         save,
         integrity,
         max_input_file_bytes,
+        warnings,
     }))
 }
-
-fn _unused_helper_for_doc_only() {}
 
 pub fn parse_max_iterations(value: &str) -> Result<usize, IterationParseError> {
     let trimmed = value.trim();

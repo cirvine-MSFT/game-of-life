@@ -250,3 +250,62 @@ fn negative_write_refuses_to_overwrite_existing() {
     std::fs::remove_file(&path).ok();
     std::fs::remove_dir(&dir).ok();
 }
+
+#[test]
+fn negative_duplicate_field_in_config_section_rejected() {
+    // The [config] section now enforces single-declaration of every field,
+    // same as the header. A second `random_seed:` line should produce
+    // DuplicateField, not "last value silently wins".
+    let original = fixture_record();
+    let path = write_to_temp("dup_config", &original);
+    let body = std::fs::read_to_string(&path).unwrap();
+    let corrupted = body.replacen("random_seed: 42", "random_seed: 42\nrandom_seed: 99", 1);
+    std::fs::write(&path, corrupted).unwrap();
+    let err = read_run_record(
+        &path,
+        64 * 1024 * 1024,
+        DEFAULT_MAX_INPUT_FILE_BYTES,
+        ContentHashMode::Ignore, // bypass content_hash so we test the dup path
+    )
+    .unwrap_err();
+    match err {
+        RunRecordReadError::Parse(game_of_life::persistence::ParseError::DuplicateField {
+            field,
+            ..
+        }) => assert_eq!(field, "random_seed"),
+        other => panic!("expected DuplicateField for random_seed; got: {other:?}"),
+    }
+    std::fs::remove_file(&path).ok();
+    std::fs::remove_dir(path.parent().unwrap()).ok();
+}
+
+#[test]
+fn negative_duplicate_field_in_result_section_rejected() {
+    // Same check for [result]. Without dup detection, "last status wins"
+    // would silently change the recorded outcome.
+    let original = fixture_record();
+    let path = write_to_temp("dup_result", &original);
+    let body = std::fs::read_to_string(&path).unwrap();
+    let corrupted = body.replacen(
+        "status: max_iterations",
+        "status: max_iterations\nstatus: extinct",
+        1,
+    );
+    std::fs::write(&path, corrupted).unwrap();
+    let err = read_run_record(
+        &path,
+        64 * 1024 * 1024,
+        DEFAULT_MAX_INPUT_FILE_BYTES,
+        ContentHashMode::Ignore,
+    )
+    .unwrap_err();
+    match err {
+        RunRecordReadError::Parse(game_of_life::persistence::ParseError::DuplicateField {
+            field,
+            ..
+        }) => assert_eq!(field, "status"),
+        other => panic!("expected DuplicateField for status; got: {other:?}"),
+    }
+    std::fs::remove_file(&path).ok();
+    std::fs::remove_dir(path.parent().unwrap()).ok();
+}

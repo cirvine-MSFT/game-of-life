@@ -198,6 +198,35 @@ mod save_load_tests {
             "expected 16 alive on initial; got:\n{out}"
         );
     }
+
+    #[test]
+    fn load_board_with_initial_board_emits_takes_precedence_warning() {
+        // --load-board takes precedence over --initial-board. The behavior
+        // should be: load wins AND user gets a warning naming the conflict.
+        let dir = unique_temp_dir("load_initial_conflict");
+        let snap_path = dir.join("snap.gol");
+        std::fs::write(
+            &snap_path,
+            "GOL-BOARD-SNAPSHOT v1\nschema_version: 1\ncreated_at: 2026-06-12T22:55:20Z\n\n----- BEGIN BOARD -----\nsize: 3x3\nencoding: ascii\nalive_count: 1\ndead_count: 8\n.#.\n...\n...\n----- END BOARD -----\n",
+        )
+        .unwrap();
+        let output = run_cli(&[
+            "--load-board",
+            snap_path.to_str().unwrap(),
+            "--initial-board",
+            "alive",
+            "--max-iterations",
+            "0",
+            "--no-save",
+        ]);
+        assert!(output.status.success(), "stderr: {}", stderr(&output));
+        let stderr_text = stderr(&output);
+        assert!(
+            stderr_text.contains("--load-board takes precedence")
+                && stderr_text.contains("--initial-board"),
+            "expected stderr warning naming both flags; got:\n{stderr_text}"
+        );
+    }
 }
 
 mod continuation_tests {
@@ -687,15 +716,33 @@ mod stats_tests {
         );
     }
 
+    /// Helper: parse `field_name: value` lines from a run record body.
+    fn extract_field<'a>(body: &'a str, field: &str) -> Option<&'a str> {
+        body.lines()
+            .find_map(|l| l.strip_prefix(&format!("{field}: ")))
+    }
+
+    fn extract_u64(body: &str, field: &str) -> u64 {
+        extract_field(body, field)
+            .unwrap_or_else(|| panic!("field '{field}' not present in record:\n{body}"))
+            .parse()
+            .unwrap_or_else(|e| panic!("field '{field}' not parseable as u64: {e}"))
+    }
+
     #[test]
     fn stats_recorded_in_run_record_match_runtime() {
+        // 4x4 alive collapses to 4 corners at gen 1 (born=0, died=12), then
+        // each corner has zero live neighbors at gen 2 so all die (born=0,
+        // died=4). Total births=0, total_deaths=16, final_alive_count=0,
+        // peak=16@gen 0, min=0@gen 2, iterations_run=2, status=extinct
+        // (early-stop on extinction).
         let dir = unique_temp_dir("stats");
         let runs_dir = dir.join("runs");
         run_cli(&[
             "--board-size",
             "4x4",
             "--max-iterations",
-            "5",
+            "10",
             "--initial-board",
             "alive",
             "--runs-dir",
@@ -703,12 +750,27 @@ mod stats_tests {
         ]);
         let source = one_run_record_in(&runs_dir);
         let body = std::fs::read_to_string(&source).unwrap();
-        // Initial alive count = 16 (4x4 all alive).
-        assert!(body.contains("initial_alive_count: 16"));
-        assert!(body.contains("peak_alive_count:"));
-        assert!(body.contains("min_alive_count:"));
-        assert!(body.contains("total_births:"));
-        assert!(body.contains("total_deaths:"));
+
+        assert_eq!(extract_field(body.as_ref(), "status"), Some("extinct"));
+        assert_eq!(extract_u64(&body, "initial_alive_count"), 16);
+        assert_eq!(extract_u64(&body, "final_alive_count"), 0);
+        assert_eq!(extract_u64(&body, "peak_alive_count"), 16);
+        assert_eq!(extract_u64(&body, "peak_alive_generation"), 0);
+        assert_eq!(extract_u64(&body, "min_alive_count"), 0);
+        assert_eq!(extract_u64(&body, "iterations_run"), 2);
+        assert_eq!(extract_u64(&body, "total_births"), 0);
+        assert_eq!(extract_u64(&body, "total_deaths"), 16);
+        // Invariant: initial_alive_count + total_births - total_deaths
+        //          = final_alive_count.
+        let initial = extract_u64(&body, "initial_alive_count") as i64;
+        let births = extract_u64(&body, "total_births") as i64;
+        let deaths = extract_u64(&body, "total_deaths") as i64;
+        let final_alive = extract_u64(&body, "final_alive_count") as i64;
+        assert_eq!(
+            initial + births - deaths,
+            final_alive,
+            "alive-cell conservation: initial + births - deaths must equal final"
+        );
     }
 }
 

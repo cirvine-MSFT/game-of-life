@@ -766,6 +766,26 @@ struct RunHeader {
     tool_version: String,
 }
 
+/// Sets a parser-collected field exactly once. Returns `DuplicateField` if
+/// the slot was already populated. Used by every section parser to enforce
+/// "field declared once and only once" semantics consistently across header,
+/// `[config]`, and `[result]`.
+fn set_once<T>(
+    slot: &mut Option<T>,
+    value: T,
+    location: &ParseLocation,
+    field: &str,
+) -> Result<(), ParseError> {
+    if slot.is_some() {
+        return Err(ParseError::DuplicateField {
+            location: location.clone(),
+            field: field.to_string(),
+        });
+    }
+    *slot = Some(value);
+    Ok(())
+}
+
 fn parse_run_header(cursor: &mut LineCursor<'_>) -> Result<RunHeader, RunRecordReadError> {
     let mut run_id: Option<RunId> = None;
     let mut schema_version: Option<u32> = None;
@@ -787,29 +807,14 @@ fn parse_run_header(cursor: &mut LineCursor<'_>) -> Result<RunHeader, RunRecordR
         let (key, value) = parse_field_line(location.clone(), &owned)?;
         match key {
             "run_id" => {
-                if run_id.is_some() {
-                    return Err(ParseError::DuplicateField {
-                        location,
-                        field: key.to_string(),
-                    }
-                    .into());
-                }
-                run_id =
-                    Some(
-                        parse_run_id(value).map_err(|_| RunRecordReadError::MalformedRunId {
-                            location: location.clone(),
-                            value: value.to_string(),
-                        })?,
-                    );
+                let parsed =
+                    parse_run_id(value).map_err(|_| RunRecordReadError::MalformedRunId {
+                        location: location.clone(),
+                        value: value.to_string(),
+                    })?;
+                set_once(&mut run_id, parsed, &location, key)?;
             }
             "schema_version" => {
-                if schema_version.is_some() {
-                    return Err(ParseError::DuplicateField {
-                        location,
-                        field: key.to_string(),
-                    }
-                    .into());
-                }
                 let parsed: u32 =
                     value
                         .parse()
@@ -825,27 +830,14 @@ fn parse_run_header(cursor: &mut LineCursor<'_>) -> Result<RunHeader, RunRecordR
                     }
                     .into());
                 }
-                schema_version = Some(parsed);
+                set_once(&mut schema_version, parsed, &location, key)?;
             }
             "created_at" => {
-                if created_at.is_some() {
-                    return Err(ParseError::DuplicateField {
-                        location,
-                        field: key.to_string(),
-                    }
-                    .into());
-                }
-                created_at = Some(parse_utc(value)?);
+                let parsed = parse_utc(value)?;
+                set_once(&mut created_at, parsed, &location, key)?;
             }
             "tool_version" => {
-                if tool_version.is_some() {
-                    return Err(ParseError::DuplicateField {
-                        location,
-                        field: key.to_string(),
-                    }
-                    .into());
-                }
-                tool_version = Some(value.to_string());
+                set_once(&mut tool_version, value.to_string(), &location, key)?;
             }
             _ => {
                 return Err(ParseError::MalformedFieldLine {
@@ -904,31 +896,34 @@ fn parse_config_section(
         let (key, value) = parse_field_line(location.clone(), &owned)?;
         match key {
             "board_size" => {
-                board_size = Some(parse_size_value(value).ok_or_else(|| {
-                    RunRecordReadError::MalformedField {
+                let parsed =
+                    parse_size_value(value).ok_or_else(|| RunRecordReadError::MalformedField {
                         location: location.clone(),
                         field: key.to_string(),
                         value: value.to_string(),
-                    }
-                })?);
+                    })?;
+                set_once(&mut board_size, parsed, &location, key)?;
             }
             "max_iterations" => {
-                max_iterations = Some(parse_usize_field(value, key, &location)?);
+                let v = parse_usize_field(value, key, &location)?;
+                set_once(&mut max_iterations, v, &location, key)?;
             }
             "max_board_memory_bytes" => {
-                max_board_memory_bytes = Some(parse_usize_field(value, key, &location)?);
+                let v = parse_usize_field(value, key, &location)?;
+                set_once(&mut max_board_memory_bytes, v, &location, key)?;
             }
             "initial_board_source" => {
-                initial_board_source = Some(value.to_string());
+                set_once(&mut initial_board_source, value.to_string(), &location, key)?;
             }
             "random_seed" => {
-                random_seed = Some(parse_u64_field(value, key, &location)?);
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut random_seed, v, &location, key)?;
             }
             "updater" => {
-                updater = Some(value.to_string());
+                set_once(&mut updater, value.to_string(), &location, key)?;
             }
             "continued_from" => {
-                continued_from = Some(if value.is_empty() {
+                let v = if value.is_empty() {
                     None
                 } else {
                     Some(
@@ -937,7 +932,8 @@ fn parse_config_section(
                             value: value.to_string(),
                         })?,
                     )
-                });
+                };
+                set_once(&mut continued_from, v, &location, key)?;
             }
             _ => {
                 return Err(ParseError::MalformedFieldLine {
@@ -1030,45 +1026,63 @@ fn parse_result_section(
                         value: value.to_string(),
                     });
                 }
-                status = Some(value.to_string());
+                set_once(&mut status, value.to_string(), &location, key)?;
             }
-            "iterations_run" => iterations_run = Some(parse_u64_field(value, key, &location)?),
-            "wall_time_ms" => wall_time_ms = Some(parse_u64_field(value, key, &location)?),
+            "iterations_run" => {
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut iterations_run, v, &location, key)?;
+            }
+            "wall_time_ms" => {
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut wall_time_ms, v, &location, key)?;
+            }
             "initial_alive_count" => {
-                initial_alive_count = Some(parse_u64_field(value, key, &location)?)
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut initial_alive_count, v, &location, key)?;
             }
             "final_alive_count" => {
-                final_alive_count = Some(parse_u64_field(value, key, &location)?)
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut final_alive_count, v, &location, key)?;
             }
-            "peak_alive_count" => peak_alive_count = Some(parse_u64_field(value, key, &location)?),
+            "peak_alive_count" => {
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut peak_alive_count, v, &location, key)?;
+            }
             "peak_alive_generation" => {
-                peak_alive_generation = Some(parse_u64_field(value, key, &location)?)
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut peak_alive_generation, v, &location, key)?;
             }
-            "min_alive_count" => min_alive_count = Some(parse_u64_field(value, key, &location)?),
+            "min_alive_count" => {
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut min_alive_count, v, &location, key)?;
+            }
             "min_alive_generation" => {
-                min_alive_generation = Some(parse_u64_field(value, key, &location)?)
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut min_alive_generation, v, &location, key)?;
             }
-            "total_births" => total_births = Some(parse_u64_field(value, key, &location)?),
-            "total_deaths" => total_deaths = Some(parse_u64_field(value, key, &location)?),
+            "total_births" => {
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut total_births, v, &location, key)?;
+            }
+            "total_deaths" => {
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut total_deaths, v, &location, key)?;
+            }
             "initial_board_hash" => {
-                initial_board_hash =
-                    Some(
-                        parse_hash(value).map_err(|_| RunRecordReadError::MalformedField {
-                            location: location.clone(),
-                            field: key.to_string(),
-                            value: value.to_string(),
-                        })?,
-                    );
+                let parsed = parse_hash(value).map_err(|_| RunRecordReadError::MalformedField {
+                    location: location.clone(),
+                    field: key.to_string(),
+                    value: value.to_string(),
+                })?;
+                set_once(&mut initial_board_hash, parsed, &location, key)?;
             }
             "final_board_hash" => {
-                final_board_hash =
-                    Some(
-                        parse_hash(value).map_err(|_| RunRecordReadError::MalformedField {
-                            location: location.clone(),
-                            field: key.to_string(),
-                            value: value.to_string(),
-                        })?,
-                    );
+                let parsed = parse_hash(value).map_err(|_| RunRecordReadError::MalformedField {
+                    location: location.clone(),
+                    field: key.to_string(),
+                    value: value.to_string(),
+                })?;
+                set_once(&mut final_board_hash, parsed, &location, key)?;
             }
             _ => {
                 return Err(ParseError::MalformedFieldLine {
