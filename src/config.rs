@@ -307,6 +307,7 @@ pub enum ConfigError {
     InvalidBoardSize(BoardSizeParseError),
     InvalidMaxIterations(IterationParseError),
     InvalidMaxBoardMemory(MemorySizeParseError),
+    InvalidMaxInputFileBytes(MemorySizeParseError),
     InvalidInitialBoard(InitialBoardSourceParseError),
     InvalidLoadFrom(LoadFromParseError),
     ConflictingInitialBoardOptions {
@@ -465,12 +466,12 @@ where
         if arg == "--max-input-file-bytes" {
             let value = take_value(&mut args, &arg, "a memory size like 256MB")?;
             max_input_file_bytes =
-                parse_memory_size(&value).map_err(ConfigError::InvalidMaxBoardMemory)?;
+                parse_memory_size(&value).map_err(ConfigError::InvalidMaxInputFileBytes)?;
             continue;
         }
         if let Some(value) = arg.strip_prefix("--max-input-file-bytes=") {
             max_input_file_bytes =
-                parse_memory_size(value).map_err(ConfigError::InvalidMaxBoardMemory)?;
+                parse_memory_size(value).map_err(ConfigError::InvalidMaxInputFileBytes)?;
             continue;
         }
 
@@ -890,6 +891,38 @@ impl fmt::Display for ConfigError {
             ConfigError::InvalidBoardSize(error) => write!(f, "{error}"),
             ConfigError::InvalidMaxIterations(error) => write!(f, "{error}"),
             ConfigError::InvalidMaxBoardMemory(error) => write!(f, "{error}"),
+            ConfigError::InvalidMaxInputFileBytes(error) => {
+                write!(
+                    f,
+                    "Option '--max-input-file-bytes' rejected the supplied value: "
+                )?;
+                match error {
+                    MemorySizeParseError::Empty => write!(
+                        f,
+                        "value is empty; use a positive memory size like 256MB."
+                    ),
+                    MemorySizeParseError::Negative { value } => write!(
+                        f,
+                        "value '{value}' is negative; use a positive memory size like 256MB."
+                    ),
+                    MemorySizeParseError::NonInteger { value } => write!(
+                        f,
+                        "value '{value}' is not a whole-number size; use values like 64KB, 256MB, 1GB, or raw bytes."
+                    ),
+                    MemorySizeParseError::Zero { value } => write!(
+                        f,
+                        "value '{value}' is zero; use a size greater than 0 bytes."
+                    ),
+                    MemorySizeParseError::UnknownUnit { value, unit } => write!(
+                        f,
+                        "value '{value}' uses unsupported unit '{unit}'; supported units are B, KB, MB, and GB."
+                    ),
+                    MemorySizeParseError::TooLarge { value } => write!(
+                        f,
+                        "value '{value}' is too large for this platform."
+                    ),
+                }
+            }
             ConfigError::InvalidInitialBoard(error) => write!(f, "{error}"),
             ConfigError::InvalidLoadFrom(error) => write!(f, "{error}"),
             ConfigError::ConflictingInitialBoardOptions { details }

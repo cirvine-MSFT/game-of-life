@@ -523,24 +523,46 @@ mod stats_tests {
 
     #[test]
     fn extinct_run_reports_status_extinct_in_record() {
-        // Single alive cell dies immediately. Use --initial-board alive with
-        // a non-stable size so it goes extinct quickly.
+        // A fully-alive 4x4 collapses fast: every interior and edge cell has
+        // 5+ live neighbors and dies in gen 1, leaving only the four corners
+        // (each with 0 live neighbors). Gen 2 wipes them out. So with
+        // max_iterations=10 the run early-stops at gen 2 with status=extinct.
         let dir = unique_temp_dir("extinct");
         let runs_dir = dir.join("runs");
         let output = run_cli(&[
             "--board-size",
-            "3x3",
+            "4x4",
             "--max-iterations",
             "10",
             "--initial-board",
-            "blinker",
+            "alive",
             "--runs-dir",
             runs_dir.to_str().unwrap(),
         ]);
         assert!(output.status.success(), "stderr: {}", stderr(&output));
-        let _record = one_run_record_in(&runs_dir);
-        // The blinker oscillates and shouldn't go extinct, so this is a
-        // sanity check; for real extinction we need a different initializer.
+        let record = one_run_record_in(&runs_dir);
+        let body = std::fs::read_to_string(&record).expect("read record");
+        assert!(
+            body.contains("status: extinct"),
+            "expected status: extinct in record; body:\n{body}"
+        );
+        assert!(
+            body.contains("final_alive_count: 0"),
+            "expected final_alive_count: 0; body:\n{body}"
+        );
+        // Should have early-stopped well before max_iterations=10.
+        let iter_line = body
+            .lines()
+            .find(|l| l.starts_with("iterations_run: "))
+            .expect("iterations_run line");
+        let iter: u64 = iter_line
+            .trim_start_matches("iterations_run: ")
+            .parse()
+            .unwrap();
+        assert!(
+            iter < 10,
+            "expected early-stop before max_iterations=10; got iterations_run={iter}"
+        );
     }
 
     #[test]
@@ -618,14 +640,17 @@ mod integrity_tests {
         let corrupted = body.replacen("wall_time_ms: ", "wall_time_ms: 9999999", 1);
         std::fs::write(&source, corrupted).unwrap();
         let output = run_cli(&["--replay", source.to_str().unwrap(), "--ignore-integrity"]);
-        // Replay may still report a content mismatch (the recorded stats
-        // don't match recomputation). The integrity bypass should at least
-        // not be a Corrupted error.
+        // --ignore-integrity must bypass the content_hash check entirely:
+        // the user sees a Warning: that names the bypass, and the
+        // Corrupted error path must not fire.
         let stderr_text = stderr(&output);
         assert!(
-            stderr_text.contains("integrity check bypassed")
-                || !stderr_text.contains("failed integrity check"),
-            "expected integrity-bypassed warning; got:\n{stderr_text}"
+            stderr_text.contains("integrity check bypassed"),
+            "expected stderr to contain the integrity-bypassed warning; got:\n{stderr_text}"
+        );
+        assert!(
+            !stderr_text.contains("failed integrity check"),
+            "did not expect the failed-integrity error when --ignore-integrity is set; got:\n{stderr_text}"
         );
     }
 
