@@ -9,6 +9,7 @@
 pub mod algorithms;
 pub mod board;
 pub mod config;
+pub mod persistence;
 
 pub use algorithms::{
     BlinkerBoardInitializer, BoardInitializer, BoardUpdater, CenteredBlinkerInitializer,
