@@ -33,6 +33,21 @@ Examples that pass: explaining why a `--continue` cumulative max is rejected whe
 
 Examples that fail and should be removed: `/// Builds a snapshot wrapping the given board.` over `fn for_board(board) -> Self`; `/// Number of cells that transitioned from dead to alive` over a `pub births: u64` field.
 
+## Test Style
+
+All tests live in `tests/` (Cargo integration test style). No inline `#[cfg(test)] mod tests {}` blocks inside `src/` modules — they're idiomatic in Rust but **not used in this repo**.
+
+Two consequences worth being explicit about:
+
+1. **Tests can only see the public API.** Integration tests sit outside the crate, so they cannot reach private or `pub(crate)` items. Private implementation details are free to refactor without breaking tests.
+2. **Tests verify contracts, not implementations.** If a behavior is worth testing, the corresponding function/type/value should be public. If you find yourself wanting to test a private helper, either:
+   - Test the public function that calls it (the helper is implementation detail), OR
+   - Promote the helper to public if it really is a meaningful library surface.
+
+File layout:
+- `tests/<module>_<area>_tests.rs` — one file per source module (e.g. `tests/persistence_hash_tests.rs` mirrors `src/persistence/hash.rs`).
+- `tests/persistence_cli_tests.rs` — end-to-end tests that drive the actual binary via `Command::new(env!("CARGO_BIN_EXE_game-of-life"))`.
+
 ## What Can Be Changed
 
 ✅ **Safe to modify:**
