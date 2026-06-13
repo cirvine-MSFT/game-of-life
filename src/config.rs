@@ -127,8 +127,25 @@ pub enum InitialBoardSpec {
     },
     ContinueFromRun {
         path: std::path::PathBuf,
-        additional_iterations: usize,
+        budget: ContinuationBudget,
     },
+}
+
+/// How a `--continue` invocation expressed its iteration budget.
+///
+/// Both forms are accepted; only one may be provided per `--continue`. The
+/// difference shows up at resolution time:
+///
+/// - `Additional(N)` means "run for N more generations" regardless of how many
+///   the source already ran.
+/// - `CumulativeMax(M)` means "run until the chain's total reaches M", i.e. the
+///   continuation runs for `M - source.iterations_run` more. The resolver
+///   rejects values where `M <= source.iterations_run` so the user gets a
+///   clear error instead of a silent zero-iteration run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContinuationBudget {
+    Additional(usize),
+    CumulativeMax(usize),
 }
 
 impl InitialBoardSpec {
@@ -676,14 +693,28 @@ where
         }
         (Some(path), None, None) => {
             continue_used = true;
-            let additional = additional_iterations.ok_or(ConfigError::MissingRequiredOption {
-                option: "--additional-iterations",
-                context: "required when using --continue",
-            })?;
-            InitialBoardSpec::ContinueFromRun {
-                path,
-                additional_iterations: additional,
-            }
+            let budget = match (additional_iterations, max_iterations) {
+                (Some(_), Some(_)) => {
+                    return Err(ConfigError::ConflictingCommands {
+                        details:
+                            "--additional-iterations and --max-iterations are mutually exclusive with --continue; pick one (--additional-iterations N means N more steps; --max-iterations M means total chain target M)",
+                    });
+                }
+                (Some(a), None) => ContinuationBudget::Additional(a),
+                (None, Some(m)) => ContinuationBudget::CumulativeMax(m),
+                (None, None) => {
+                    return Err(ConfigError::MissingRequiredOption {
+                        option: "--additional-iterations or --max-iterations",
+                        context:
+                            "required when using --continue (either N more steps, or a cumulative chain target)",
+                    });
+                }
+            };
+            // The cumulative branch consumes --max-iterations into the
+            // continuation budget; clear it so the Run config's
+            // max_iterations slot stays None for replay/honesty.
+            max_iterations = None;
+            InitialBoardSpec::ContinueFromRun { path, budget }
         }
         (None, Some(path), None) => InitialBoardSpec::LoadFromFile {
             path,

@@ -234,7 +234,7 @@ Only one: **extinction**. If every cell is dead after a generation, the run earl
 
 - `--runs-dir`, `--save-run`, `--no-save` — control where (and whether) the auto-save lands.
 - `--load-board`, `--load-from` — start a new run from a snapshot or a recorded board.
-- `--continue`, `--additional-iterations` — load a prior run's FINAL board and run further. Records `continued_from: <source-run-id>` for provenance.
+- `--continue`, `--additional-iterations` — load a prior run's FINAL board and run further. Records `continued_from: <source-run-id>` for provenance. The iteration budget can be specified two ways: `--additional-iterations N` means "run for N more steps"; `--max-iterations M` (when paired with `--continue`) means "target a cumulative total of M steps across the chain" and runs for `M - source.iterations_run` more. The two budget flags are mutually exclusive; cumulative `M <= source.iterations_run` is rejected with a clear error.
 - `--replay <PATH>` — re-execute a run record and diff final board + key stats.
 - `--extract-board <PATH> --output <PATH>` — write a snapshot from a run record's `INITIAL` or `FINAL` block.
 - `--ignore-integrity` — opt-in bypass of the `content_hash` check (warns on stderr).

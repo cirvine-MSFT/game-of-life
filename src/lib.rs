@@ -23,8 +23,9 @@ pub use board::{
 };
 pub use config::{
     parse_cli_args, parse_memory_size, BoardSize, BoardSizeParseError, CliCommand, ConfigError,
-    ExtractBoardConfig, InitialBoardSource, InitialBoardSourceParseError, InitialBoardSpec,
-    IntegrityMode, IterationParseError, LoadFrom, LoadFromParseError, MemorySizeParseError,
-    ReplayConfig, SaveSettings, SimulationConfig, DEFAULT_MAX_BOARD_MEMORY_BYTES, DEFAULT_RUNS_DIR,
+    ContinuationBudget, ExtractBoardConfig, InitialBoardSource, InitialBoardSourceParseError,
+    InitialBoardSpec, IntegrityMode, IterationParseError, LoadFrom, LoadFromParseError,
+    MemorySizeParseError, ReplayConfig, SaveSettings, SimulationConfig,
+    DEFAULT_MAX_BOARD_MEMORY_BYTES, DEFAULT_RUNS_DIR,
 };
 pub use stats::{AdvanceOutcome, RunStatistics, RunStatisticsCollector};

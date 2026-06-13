@@ -42,7 +42,8 @@ const HELP_TEXT: &str = concat!(
     "      --load-board <PATH>            Load the initial board from a .gol file.\n",
     "      --load-from initial|final      With --load-board, pick which block of a run record to use.\n",
     "      --continue <PATH>              Continue a prior run: load its FINAL board as the initial board.\n",
-    "      --additional-iterations <N>    Required with --continue: how many more generations to run.\n",
+    "      --additional-iterations <N>    With --continue: run N more generations. Mutually exclusive with --max-iterations.\n",
+    "                                     (With --continue, --max-iterations M instead targets a cumulative total of M iterations across the chain.)\n",
     "\n",
     "Save options:\n",
     "      --runs-dir <DIR>               Save run records into this directory; default ./runs.\n",
@@ -133,6 +134,10 @@ enum RunSimulationError {
         from_file: (usize, usize),
         from_cli: (usize, usize),
     },
+    CumulativeMaxTooSmall {
+        cumulative_max: usize,
+        source_iterations_run: u64,
+    },
     MaxIterationsRequiredForRandomSeed,
 }
 
@@ -156,6 +161,13 @@ impl std::fmt::Display for RunSimulationError {
                 f,
                 "Board size mismatch: file declares {}x{}, --board-size declares {}x{}. Either drop --board-size or pass the matching size.",
                 from_file.0, from_file.1, from_cli.0, from_cli.1
+            ),
+            RunSimulationError::CumulativeMaxTooSmall {
+                cumulative_max,
+                source_iterations_run,
+            } => write!(
+                f,
+                "--max-iterations {cumulative_max} is not greater than the source run's iterations_run ({source_iterations_run}); pick a larger total, or use --additional-iterations N to add N more steps."
             ),
             RunSimulationError::MaxIterationsRequiredForRandomSeed => write!(
                 f,
@@ -330,10 +342,7 @@ fn resolve_initial_board(config: &SimulationConfig) -> Result<ResolvedInitial, R
                 warning: None,
             })
         }
-        InitialBoardSpec::ContinueFromRun {
-            path,
-            additional_iterations,
-        } => {
+        InitialBoardSpec::ContinueFromRun { path, budget } => {
             let loaded = read_run_record_with_warnings(
                 path,
                 config.max_board_memory_bytes,
@@ -345,12 +354,26 @@ fn resolve_initial_board(config: &SimulationConfig) -> Result<ResolvedInitial, R
             } else {
                 Some(loaded.warnings.join("\n"))
             };
+            let source_iterations_run = loaded.record.result.iterations_run;
+            let additional = match *budget {
+                game_of_life::ContinuationBudget::Additional(n) => n,
+                game_of_life::ContinuationBudget::CumulativeMax(m) => {
+                    let m_u64 = m as u64;
+                    if m_u64 <= source_iterations_run {
+                        return Err(RunSimulationError::CumulativeMaxTooSmall {
+                            cumulative_max: m,
+                            source_iterations_run,
+                        });
+                    }
+                    (m_u64 - source_iterations_run) as usize
+                }
+            };
             Ok(ResolvedInitial {
                 board: loaded.record.final_board,
                 run_id,
                 random_seed,
                 continued_from: Some(loaded.record.run_id),
-                effective_max_iterations: Some(*additional_iterations),
+                effective_max_iterations: Some(additional),
                 warning,
             })
         }

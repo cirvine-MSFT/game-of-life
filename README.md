@@ -88,8 +88,9 @@ The console app prints concise run information and the final board state only. P
 | `--initial-board <SOURCE>` | Set the initial board source. Supported values are `demo`, `alive`, `blinker`, and `random`. | `demo` |
 | `--load-board <PATH>` | Load the initial board from a `.gol` file (board snapshot or run record). Mutually exclusive with `--initial-board` and `--continue`. | N/A |
 | `--load-from initial\|final` | When `--load-board` points at a run record, pick which embedded block to use. | `initial` |
-| `--continue <PATH>` | Continue a prior run record: load its FINAL board as the initial board. Requires `--additional-iterations`. Mutually exclusive with `--load-board` and `--initial-board`. | N/A |
-| `--additional-iterations <N>` | Required with `--continue`: how many more generations to run. | N/A |
+| `--continue <PATH>` | Continue a prior run record: load its FINAL board as the initial board. Requires one of `--additional-iterations` or `--max-iterations` (see below). Mutually exclusive with `--load-board` and `--initial-board`. | N/A |
+| `--additional-iterations <N>` | With `--continue`: run **N more** generations. Mutually exclusive with `--max-iterations`. | N/A |
+| `-m`, `--max-iterations <COUNT>` with `--continue` | With `--continue`: target a **cumulative total** of `COUNT` iterations across the chain (continuation runs for `COUNT - source.iterations_run` more). Errors if `COUNT` is not strictly greater than the source run's `iterations_run`. Without `--continue`, just bounds this run's loop as usual. | `10` |
 
 #### Save options
 
@@ -158,8 +159,19 @@ To continue a run for more generations (with full provenance recorded):
 
 ```powershell
 .\target\release\game-of-life.exe `
+To continue a run for more generations (with full provenance recorded):
+
+```powershell
+# Either form works:
+.\target\release\game-of-life.exe `
     --continue runs\20260612T225520Z-7b3a1f0c.gol `
     --additional-iterations 100
+
+# ...or in cumulative form (run until the chain has 200 total iterations):
+.\target\release\game-of-life.exe `
+    --continue runs\20260612T225520Z-7b3a1f0c.gol `
+    --max-iterations 200
+```
 ```
 
 ### Algorithm Overview

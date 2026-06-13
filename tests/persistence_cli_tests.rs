@@ -259,8 +259,130 @@ mod continuation_tests {
         assert!(!output.status.success());
         let stderr_text = stderr(&output);
         assert!(
-            stderr_text.contains("--additional-iterations") && stderr_text.contains("required"),
-            "stderr should mention --additional-iterations required; got:\n{stderr_text}"
+            stderr_text.contains("--additional-iterations or --max-iterations")
+                && stderr_text.contains("required"),
+            "stderr should require either --additional-iterations or --max-iterations; got:\n{stderr_text}"
+        );
+    }
+
+    #[test]
+    fn continue_with_cumulative_max_iterations_runs_the_remainder() {
+        // Source ran 4 iterations. Continuation with --max-iterations 10 should
+        // run for 6 more, and the new record's iterations_run reflects that.
+        let dir = unique_temp_dir("continue_cumulative");
+        let runs_dir = dir.join("runs");
+        run_cli(&[
+            "--board-size",
+            "5x5",
+            "--max-iterations",
+            "4",
+            "--initial-board",
+            "blinker",
+            "--runs-dir",
+            runs_dir.to_str().unwrap(),
+        ]);
+        let source = one_run_record_in(&runs_dir);
+
+        let continued_runs_dir = dir.join("continued");
+        let output = run_cli(&[
+            "--continue",
+            source.to_str().unwrap(),
+            "--max-iterations",
+            "10",
+            "--runs-dir",
+            continued_runs_dir.to_str().unwrap(),
+        ]);
+        assert!(output.status.success(), "stderr: {}", stderr(&output));
+        let continued = one_run_record_in(&continued_runs_dir);
+        let body = std::fs::read_to_string(&continued).unwrap();
+        assert!(
+            body.contains("iterations_run: 6"),
+            "expected the continuation to run 6 iterations (10 cumulative - 4 source); body:\n{body}"
+        );
+    }
+
+    #[test]
+    fn negative_continue_cumulative_max_not_greater_than_source_iterations() {
+        // Source ran 4 iterations; --max-iterations 4 has nothing left to do.
+        let dir = unique_temp_dir("continue_cum_equal");
+        let runs_dir = dir.join("runs");
+        run_cli(&[
+            "--board-size",
+            "5x5",
+            "--max-iterations",
+            "4",
+            "--initial-board",
+            "blinker",
+            "--runs-dir",
+            runs_dir.to_str().unwrap(),
+        ]);
+        let source = one_run_record_in(&runs_dir);
+
+        let output = run_cli(&[
+            "--continue",
+            source.to_str().unwrap(),
+            "--max-iterations",
+            "4",
+        ]);
+        assert!(
+            !output.status.success(),
+            "should reject cumulative max == source iterations_run"
+        );
+        let stderr_text = stderr(&output);
+        assert!(
+            stderr_text.contains("not greater than")
+                && stderr_text.contains("iterations_run")
+                && stderr_text.contains("--additional-iterations"),
+            "stderr should explain cumulative-max constraint and offer --additional-iterations alternative; got:\n{stderr_text}"
+        );
+
+        // Also assert the "strictly less than" case (3 < 4) is rejected with the
+        // same error.
+        let output_lt = run_cli(&[
+            "--continue",
+            source.to_str().unwrap(),
+            "--max-iterations",
+            "3",
+        ]);
+        assert!(
+            !output_lt.status.success(),
+            "should reject cumulative max < source iterations_run"
+        );
+        assert!(
+            stderr(&output_lt).contains("not greater than"),
+            "stderr should reject cumulative < source; got:\n{}",
+            stderr(&output_lt)
+        );
+    }
+
+    #[test]
+    fn negative_continue_with_both_additional_and_max_iterations_is_mutually_exclusive() {
+        let dir = unique_temp_dir("continue_both_budgets");
+        let runs_dir = dir.join("runs");
+        run_cli(&[
+            "--board-size",
+            "3x3",
+            "--max-iterations",
+            "2",
+            "--runs-dir",
+            runs_dir.to_str().unwrap(),
+        ]);
+        let source = one_run_record_in(&runs_dir);
+        let output = run_cli(&[
+            "--continue",
+            source.to_str().unwrap(),
+            "--additional-iterations",
+            "3",
+            "--max-iterations",
+            "10",
+        ]);
+        assert!(!output.status.success());
+        let stderr_text = stderr(&output);
+        assert!(
+            stderr_text.contains("mutually exclusive")
+                && stderr_text.contains("--additional-iterations")
+                && stderr_text.contains("--max-iterations"),
+            "stderr should name both flags as mutually exclusive; got:\n{stderr_text}"
         );
     }
 
