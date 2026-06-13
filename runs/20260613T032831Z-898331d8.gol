@@ -1,0 +1,65 @@
+GOL-RUN-RECORD v1
+run_id: 898331d8-c54c-4221-9061-17962989dc35
+schema_version: 1
+created_at: 2026-06-13T03:28:31Z
+tool_version: 0.1.0
+
+[config]
+board_size: 10x10
+max_iterations: 0
+max_board_memory_bytes: 67108864
+initial_board_source: demo
+random_seed: 9124446578166028749
+updater: in_place_transitional
+continued_from:
+
+[result]
+status: max_iterations
+iterations_run: 0
+wall_time_ms: 0
+initial_alive_count: 13
+final_alive_count: 13
+peak_alive_count: 13
+peak_alive_generation: 0
+min_alive_count: 13
+min_alive_generation: 0
+total_births: 0
+total_deaths: 0
+initial_board_hash: 0x9eda74bff38e00b2
+final_board_hash: 0x9eda74bff38e00b2
+
+----- BEGIN INITIAL BOARD -----
+size: 10x10
+encoding: ascii
+alive_count: 13
+dead_count: 87
+..........
+..........
+.....#.#..
+..#.##.#..
+......#...
+...##.....
+..##.#....
+...#......
+..........
+..........
+----- END INITIAL BOARD -----
+
+----- BEGIN FINAL BOARD -----
+size: 10x10
+encoding: ascii
+alive_count: 13
+dead_count: 87
+..........
+..........
+.....#.#..
+..#.##.#..
+......#...
+...##.....
+..##.#....
+...#......
+..........
+..........
+----- END FINAL BOARD -----
+
+content_hash: 0xb35b08faaf6aaf2c

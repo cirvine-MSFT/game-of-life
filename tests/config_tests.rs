@@ -1,104 +1,105 @@
 use game_of_life::{
     parse_cli_args, parse_memory_size, BoardSize, BoardSizeParseError, CliCommand, ConfigError,
-    InitialBoardSource, InitialBoardSourceParseError, IterationParseError, MemorySizeParseError,
-    SimulationConfig, DEFAULT_MAX_BOARD_MEMORY_BYTES,
+    InitialBoardSource, InitialBoardSourceParseError, InitialBoardSpec, IterationParseError,
+    MemorySizeParseError, SimulationConfig, DEFAULT_MAX_BOARD_MEMORY_BYTES,
 };
 
 mod normal_tests {
     use super::*;
 
     #[test]
-    fn default_config_uses_five_by_five_and_ten_iterations() {
-        assert_eq!(
-            SimulationConfig::default(),
-            SimulationConfig {
-                board_size: BoardSize {
-                    width: 10,
-                    height: 10
-                },
-                max_iterations: 10,
-                max_board_memory_bytes: DEFAULT_MAX_BOARD_MEMORY_BYTES,
-                initial_board: InitialBoardSource::Demo,
+    fn default_config_uses_unset_size_and_iterations_with_demo_initializer() {
+        let cfg = SimulationConfig::default();
+        assert_eq!(cfg.board_size, None);
+        assert_eq!(cfg.max_iterations, None);
+        assert_eq!(cfg.max_board_memory_bytes, DEFAULT_MAX_BOARD_MEMORY_BYTES);
+        assert!(matches!(
+            cfg.initial_board,
+            InitialBoardSpec::Initializer(InitialBoardSource::Demo)
+        ));
+        assert_eq!(cfg.effective_board_size(), BoardSize::default());
+        assert_eq!(cfg.effective_max_iterations(), 10);
+    }
+
+    fn assert_run_with(
+        command: Result<CliCommand, ConfigError>,
+        expected_size: Option<BoardSize>,
+        expected_iters: Option<usize>,
+        expected_initial: InitialBoardSpec,
+        expected_memory: usize,
+    ) {
+        match command.expect("parse error") {
+            CliCommand::Run(cfg) => {
+                assert_eq!(cfg.board_size, expected_size);
+                assert_eq!(cfg.max_iterations, expected_iters);
+                assert_eq!(cfg.initial_board, expected_initial);
+                assert_eq!(cfg.max_board_memory_bytes, expected_memory);
             }
-        );
+            other => panic!("expected Run, got {other:?}"),
+        }
     }
 
     #[test]
     fn parses_long_cli_options_into_run_config() {
-        let command = parse_cli_args(["--board-size", "2x3", "--max-iterations", "4"]);
-
-        assert_eq!(
-            command,
-            Ok(CliCommand::Run(SimulationConfig {
-                board_size: BoardSize {
-                    width: 2,
-                    height: 3
-                },
-                max_iterations: 4,
-                ..SimulationConfig::default()
-            }))
+        assert_run_with(
+            parse_cli_args(["--board-size", "2x3", "--max-iterations", "4"]),
+            Some(BoardSize {
+                width: 2,
+                height: 3,
+            }),
+            Some(4),
+            InitialBoardSpec::Initializer(InitialBoardSource::Demo),
+            DEFAULT_MAX_BOARD_MEMORY_BYTES,
         );
     }
 
     #[test]
     fn parses_short_cli_options_into_run_config() {
-        let command = parse_cli_args(["-b", "3x4", "-m", "5"]);
-
-        assert_eq!(
-            command,
-            Ok(CliCommand::Run(SimulationConfig {
-                board_size: BoardSize {
-                    width: 3,
-                    height: 4
-                },
-                max_iterations: 5,
-                ..SimulationConfig::default()
-            }))
+        assert_run_with(
+            parse_cli_args(["-b", "3x4", "-m", "5"]),
+            Some(BoardSize {
+                width: 3,
+                height: 4,
+            }),
+            Some(5),
+            InitialBoardSpec::Initializer(InitialBoardSource::Demo),
+            DEFAULT_MAX_BOARD_MEMORY_BYTES,
         );
     }
 
     #[test]
     fn parses_equals_form_options_into_run_config() {
-        let command = parse_cli_args(["--board-size=4x5", "--max-iterations=6"]);
-
-        assert_eq!(
-            command,
-            Ok(CliCommand::Run(SimulationConfig {
-                board_size: BoardSize {
-                    width: 4,
-                    height: 5
-                },
-                max_iterations: 6,
-                ..SimulationConfig::default()
-            }))
+        assert_run_with(
+            parse_cli_args(["--board-size=4x5", "--max-iterations=6"]),
+            Some(BoardSize {
+                width: 4,
+                height: 5,
+            }),
+            Some(6),
+            InitialBoardSpec::Initializer(InitialBoardSource::Demo),
+            DEFAULT_MAX_BOARD_MEMORY_BYTES,
         );
     }
 
     #[test]
     fn parses_memory_budget_and_initial_board_options_into_run_config() {
-        let command = parse_cli_args(["--max-board-memory", "64 MB", "--initial-board", "blinker"]);
-
-        assert_eq!(
-            command,
-            Ok(CliCommand::Run(SimulationConfig {
-                max_board_memory_bytes: 64 * 1024 * 1024,
-                initial_board: InitialBoardSource::Blinker,
-                ..SimulationConfig::default()
-            }))
+        assert_run_with(
+            parse_cli_args(["--max-board-memory", "64 MB", "--initial-board", "blinker"]),
+            None,
+            None,
+            InitialBoardSpec::Initializer(InitialBoardSource::Blinker),
+            64 * 1024 * 1024,
         );
     }
 
     #[test]
     fn parses_equals_form_memory_budget_and_initial_board_options() {
-        let command = parse_cli_args(["--max-board-memory=1GB", "--initial-board=random"]);
-
-        assert_eq!(
-            command,
-            Ok(CliCommand::Run(SimulationConfig {
-                max_board_memory_bytes: 1024 * 1024 * 1024,
-                initial_board: InitialBoardSource::Random,
-                ..SimulationConfig::default()
-            }))
+        assert_run_with(
+            parse_cli_args(["--max-board-memory=1GB", "--initial-board=random"]),
+            None,
+            None,
+            InitialBoardSpec::Initializer(InitialBoardSource::Random),
+            1024 * 1024 * 1024,
         );
     }
 
@@ -136,16 +137,10 @@ mod edge_case_tests {
 
     #[test]
     fn edge_case_zero_max_iterations_is_valid() {
-        let command = parse_cli_args(["--max-iterations", "0"]);
-
-        assert_eq!(
-            command,
-            Ok(CliCommand::Run(SimulationConfig {
-                board_size: BoardSize::default(),
-                max_iterations: 0,
-                ..SimulationConfig::default()
-            }))
-        );
+        match parse_cli_args(["--max-iterations", "0"]) {
+            Ok(CliCommand::Run(cfg)) => assert_eq!(cfg.max_iterations, Some(0)),
+            other => panic!("expected Run, got {other:?}"),
+        }
     }
 
     #[test]
