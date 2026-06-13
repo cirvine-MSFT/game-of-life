@@ -44,9 +44,24 @@ Two consequences worth being explicit about:
    - Test the public function that calls it (the helper is implementation detail), OR
    - Promote the helper to public if it really is a meaningful library surface.
 
-File layout:
-- `tests/<module>_<area>_tests.rs` — one file per source module (e.g. `tests/persistence_hash_tests.rs` mirrors `src/persistence/hash.rs`).
-- `tests/persistence_cli_tests.rs` — end-to-end tests that drive the actual binary via `Command::new(env!("CARGO_BIN_EXE_game-of-life"))`.
+File layout — `tests/` mirrors `src/`:
+
+```
+src/                            tests/
+  persistence/  ───────────►      persistence.rs          ← wrapper (cargo test entry)
+    hash.rs                       persistence/
+    magic.rs                        hash.rs               ← tests for src/persistence/hash.rs
+    ...                             magic.rs
+                                    ...
+  stats/        ───────────►      stats.rs
+    run_statistics.rs               stats/
+                                    run_statistics.rs
+  config.rs     ───────────►      config_tests.rs        ← flat module → flat test file
+```
+
+Why the wrapper file: cargo's integration-test discovery only picks up top-level `tests/*.rs` files as test binaries. Files inside `tests/<module>/` need a `tests/<module>.rs` wrapper that declares each submodule with `#[path = "<module>/<file>.rs"] mod <file>;`. The `#[path]` is required because each `tests/*.rs` is its own crate root, so the default `mod foo;` lookup looks for `tests/foo.rs` (sibling) instead of `tests/<wrapper>/foo.rs` (child). See `tests/persistence.rs` and `tests/stats.rs` for the pattern.
+
+End-to-end binary-driven tests (e.g. CLI tests that drive the actual binary via `Command::new(env!("CARGO_BIN_EXE_game-of-life"))`) live alongside their module — `tests/persistence/cli.rs` covers binary-driven persistence behavior.
 
 ## What Can Be Changed
 
