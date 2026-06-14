@@ -802,9 +802,8 @@ fn parse_run_header(cursor: &mut LineCursor<'_>) -> Result<RunHeader, RunRecordR
             break;
         }
         let location = cursor.current_location();
-        let owned = line.to_string();
         cursor.consume();
-        let (key, value) = parse_field_line(location.clone(), &owned)?;
+        let (key, value) = parse_field_line(location.clone(), line)?;
         match key {
             "run_id" => {
                 let parsed =
@@ -842,7 +841,7 @@ fn parse_run_header(cursor: &mut LineCursor<'_>) -> Result<RunHeader, RunRecordR
             _ => {
                 return Err(ParseError::MalformedFieldLine {
                     location,
-                    line: owned,
+                    line: line.to_string(),
                 }
                 .into());
             }
@@ -891,9 +890,8 @@ fn parse_config_section(
             break;
         }
         let location = cursor.current_location();
-        let owned = line.to_string();
         cursor.consume();
-        let (key, value) = parse_field_line(location.clone(), &owned)?;
+        let (key, value) = parse_field_line(location.clone(), line)?;
         match key {
             "board_size" => {
                 let parsed =
@@ -938,7 +936,7 @@ fn parse_config_section(
             _ => {
                 return Err(ParseError::MalformedFieldLine {
                     location,
-                    line: owned,
+                    line: line.to_string(),
                 }
                 .into());
             }
@@ -1015,9 +1013,8 @@ fn parse_result_section(
             break;
         }
         let location = cursor.current_location();
-        let owned = line.to_string();
         cursor.consume();
-        let (key, value) = parse_field_line(location.clone(), &owned)?;
+        let (key, value) = parse_field_line(location.clone(), line)?;
         match key {
             "status" => {
                 if !RECOGNIZED_STATUSES.contains(&value) {
@@ -1087,7 +1084,7 @@ fn parse_result_section(
             _ => {
                 return Err(ParseError::MalformedFieldLine {
                     location,
-                    line: owned,
+                    line: line.to_string(),
                 }
                 .into());
             }

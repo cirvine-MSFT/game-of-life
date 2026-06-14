@@ -35,7 +35,7 @@ use std::io::{self, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::board::{BoardEditor, CellCoordinate, CellState, InMemoryBoard};
+use crate::board::{CellState, InMemoryBoard};
 
 use super::errors::PersistenceIoError;
 use super::magic::{sniff_from_reader, FileKind, MagicError, BOARD_SNAPSHOT_MAGIC, SCHEMA_VERSION};
@@ -430,37 +430,36 @@ pub fn write_board_block_to<W: Write>(
     label: &str,
     board: &InMemoryBoard,
 ) -> io::Result<()> {
-    let (alive, dead) = count_cells(board);
+    // Render the grid into a buffer in one pass, counting alive cells while
+    // we go. We need the count to emit the header *before* the grid, so we
+    // buffer the grid bytes rather than walking the board twice.
+    let width = board.width();
+    let height = board.height();
+    let mut grid_buf = Vec::with_capacity(width.saturating_mul(height + 1));
+    let mut alive: usize = 0;
+    for y in 0..height {
+        for x in 0..width {
+            let ch = match board.get(x, y) {
+                CellState::Alive => {
+                    alive += 1;
+                    b'#'
+                }
+                _ => b'.',
+            };
+            grid_buf.push(ch);
+        }
+        grid_buf.push(b'\n');
+    }
+    let total = width.saturating_mul(height);
+    let dead = total - alive;
     writeln!(writer, "{}", format_begin_fence(label))?;
-    writeln!(writer, "size: {}x{}", board.width(), board.height())?;
+    writeln!(writer, "size: {width}x{height}")?;
     writeln!(writer, "encoding: {ENCODING_ASCII}")?;
     writeln!(writer, "alive_count: {alive}")?;
     writeln!(writer, "dead_count: {dead}")?;
-    for y in 0..board.height() {
-        for x in 0..board.width() {
-            let ch = match board.get(x, y) {
-                CellState::Alive => '#',
-                _ => '.',
-            };
-            write!(writer, "{ch}")?;
-        }
-        writeln!(writer)?;
-    }
+    writer.write_all(&grid_buf)?;
     writeln!(writer, "{}", format_end_fence(label))?;
     Ok(())
-}
-
-fn count_cells(board: &InMemoryBoard) -> (usize, usize) {
-    let mut alive = 0usize;
-    for y in 0..board.height() {
-        for x in 0..board.width() {
-            if matches!(board.get(x, y), CellState::Alive) {
-                alive += 1;
-            }
-        }
-    }
-    let total = board.width().saturating_mul(board.height());
-    (alive, total - alive)
 }
 
 // -------- reading --------------------------------------------------------
@@ -500,9 +499,8 @@ pub fn read_board_snapshot(
                     break;
                 }
                 let location = cursor.current_location();
-                let owned = line.to_string();
                 cursor.consume();
-                let (key, value) = parse_field_line(location.clone(), &owned)?;
+                let (key, value) = parse_field_line(location.clone(), line)?;
                 match key {
                     "schema_version" => {
                         if schema_version.is_some() {
@@ -827,36 +825,52 @@ fn parse_grid_row(
     expected_width: usize,
     location: &ParseLocation,
 ) -> Result<(), BoardSnapshotReadError> {
-    let chars: Vec<char> = row.chars().collect();
-    if chars.len() != expected_width {
-        return Err(BoardSnapshotReadError::Parse(ParseError::RaggedBoardRow {
-            location: location.clone(),
-            expected_width,
-            actual_width: chars.len(),
-        }));
-    }
-    for (x, ch) in chars.iter().enumerate() {
+    let mut count: usize = 0;
+    for ch in row.chars() {
+        if count >= expected_width {
+            // Walk the rest of the string just to compute the actual width
+            // for the error; we already know we've exceeded the expected.
+            let extra = row.chars().count();
+            return Err(BoardSnapshotReadError::Parse(ParseError::RaggedBoardRow {
+                location: location.clone(),
+                expected_width,
+                actual_width: extra,
+            }));
+        }
         let state = match ch {
             '.' => CellState::Dead,
             '#' => CellState::Alive,
-            _ if !ch.is_ascii() => {
+            other if !other.is_ascii() => {
                 return Err(BoardSnapshotReadError::Parse(
                     ParseError::NonAsciiBoardCharacter {
                         location: location.clone(),
-                        character: *ch,
+                        character: other,
                     },
                 ));
             }
-            _ => {
+            other => {
                 return Err(BoardSnapshotReadError::Parse(
                     ParseError::UnknownBoardCharacter {
                         location: location.clone(),
-                        character: *ch,
+                        character: other,
                     },
                 ));
             }
         };
-        board.set_cell(CellCoordinate::new(x, y), state).ok();
+        // The function takes &mut InMemoryBoard concretely, so we use the
+        // infallible `set` directly. (The trait method `set_cell` returns
+        // `Result<(), Infallible>` on `InMemoryBoard`, which works but
+        // requires either `.unwrap()` or `impl From<Infallible>` to compose
+        // with `?` in this error type.)
+        board.set(count, y, state);
+        count += 1;
+    }
+    if count != expected_width {
+        return Err(BoardSnapshotReadError::Parse(ParseError::RaggedBoardRow {
+            location: location.clone(),
+            expected_width,
+            actual_width: count,
+        }));
     }
     Ok(())
 }
