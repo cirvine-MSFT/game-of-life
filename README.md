@@ -240,8 +240,11 @@ cd desktop\ui
 npm ci
 cd ..
 
-# Run in dev mode (Vite + Tauri together).
-cargo tauri dev
+# Run in dev mode (Vite + Tauri together). `--no-watch` skips Tauri's
+# Rust-source watcher, which currently picks up unrelated changes inside
+# `desktop/ui/node_modules/` and triggers spurious rebuilds. The Vite
+# server still hot-reloads the frontend.
+cargo tauri dev --no-watch
 
 # Or produce a release bundle (NSIS .exe + .msi on Windows).
 cargo tauri build
