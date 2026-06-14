@@ -19,13 +19,13 @@ pub use algorithms::{
     MAX_ALIVE_CELLS_PER_THOUSAND,
 };
 pub use board::{
-    BoardEditor, BoardView, CellCoordinate, CellState, InMemoryBoard, InMemoryBoardCreationError,
+    BoardEditor, BoardSize, BoardSizeParseError, BoardView, CellCoordinate, CellState,
+    InMemoryBoard, InMemoryBoardCreationError, DEFAULT_BOARD_HEIGHT, DEFAULT_BOARD_WIDTH,
 };
 pub use config::{
-    parse_cli_args, parse_memory_size, BoardSize, BoardSizeParseError, CliCommand, ConfigError,
-    ContinuationBudget, ExtractBoardConfig, InitialBoardSource, InitialBoardSourceParseError,
-    InitialBoardSpec, IntegrityMode, IterationParseError, LoadFrom, LoadFromParseError,
-    MemorySizeParseError, ReplayConfig, SaveSettings, SimulationConfig,
-    DEFAULT_MAX_BOARD_MEMORY_BYTES, DEFAULT_RUNS_DIR,
+    parse_cli_args, parse_memory_size, CliCommand, ConfigError, ContinuationBudget,
+    ExtractBoardConfig, InitialBoardSource, InitialBoardSourceParseError, InitialBoardSpec,
+    IntegrityMode, IterationParseError, LoadFrom, LoadFromParseError, MemorySizeParseError,
+    ReplayConfig, SaveSettings, SimulationConfig, DEFAULT_MAX_BOARD_MEMORY_BYTES, DEFAULT_RUNS_DIR,
 };
 pub use stats::{AdvanceOutcome, RunStatistics, RunStatisticsCollector};

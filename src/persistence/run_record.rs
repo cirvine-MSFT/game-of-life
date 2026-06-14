@@ -57,7 +57,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::board::InMemoryBoard;
+use crate::board::{BoardSize, InMemoryBoard};
 
 use super::board_snapshot::{
     read_board_block, slurp_with_size_guard, write_board_block_to, BoardSnapshot,
@@ -135,7 +135,7 @@ pub struct RunRecord {
 
 #[derive(Debug, Clone)]
 pub struct RunRecordConfig {
-    pub board_size: (usize, usize),
+    pub board_size: BoardSize,
     pub max_iterations: usize,
     pub max_board_memory_bytes: usize,
     pub initial_board_source: String,
@@ -217,7 +217,6 @@ pub enum RunRecordReadError {
     },
     InvalidTimestamp(TimestampParseError),
     Parse(ParseError),
-    LoadedBoardSize(LoadedBoardSizeError),
     BoardBlockTooLarge {
         block: &'static str,
         run_id: RunId,
@@ -271,7 +270,6 @@ impl fmt::Display for RunRecordReadError {
             ),
             RunRecordReadError::InvalidTimestamp(e) => write!(f, "{e}"),
             RunRecordReadError::Parse(e) => write!(f, "{e}"),
-            RunRecordReadError::LoadedBoardSize(e) => write!(f, "{e}"),
             RunRecordReadError::BoardBlockTooLarge {
                 block,
                 run_id,
@@ -342,7 +340,6 @@ impl std::error::Error for RunRecordReadError {
             RunRecordReadError::Magic(e) => Some(e),
             RunRecordReadError::InvalidTimestamp(e) => Some(e),
             RunRecordReadError::Parse(e) => Some(e),
-            RunRecordReadError::LoadedBoardSize(e) => Some(e),
             RunRecordReadError::BoardBlockTooLarge { source, .. } => Some(source),
             _ => None,
         }
@@ -373,35 +370,47 @@ impl From<TimestampParseError> for RunRecordReadError {
     }
 }
 
-impl From<BoardSnapshotReadError> for RunRecordReadError {
-    fn from(value: BoardSnapshotReadError) -> Self {
-        match value {
-            BoardSnapshotReadError::Io(e) => RunRecordReadError::Io(e),
-            BoardSnapshotReadError::Magic(e) => RunRecordReadError::Magic(e),
-            BoardSnapshotReadError::UnexpectedFileKind {
-                path,
-                expected,
-                actual,
-            } => RunRecordReadError::UnexpectedFileKind {
-                path,
-                expected,
-                actual,
-            },
-            BoardSnapshotReadError::InvalidTimestamp(e) => RunRecordReadError::InvalidTimestamp(e),
-            BoardSnapshotReadError::Parse(e) => RunRecordReadError::Parse(e),
-            BoardSnapshotReadError::LoadedBoardSize(e) => RunRecordReadError::LoadedBoardSize(e),
-            BoardSnapshotReadError::FileTooLarge {
-                path,
-                actual_bytes,
-                limit_bytes,
-            } => RunRecordReadError::FileTooLarge {
-                path,
-                actual_bytes,
-                limit_bytes,
-            },
-            BoardSnapshotReadError::MalformedSizeHeader { location, value } => {
-                RunRecordReadError::MalformedSizeHeader { location, value }
-            }
+// Note: there is intentionally no blanket `From<BoardSnapshotReadError> for
+// RunRecordReadError`. Run-record reads always want to wrap a board-block
+// memory error in `BoardBlockTooLarge { block, run_id, source }` so the
+// message names which block (INITIAL/FINAL) failed and the source run id.
+// The few call sites that read an embedded board block convert other variants
+// explicitly via `map_board_snapshot_err` below.
+
+fn map_board_snapshot_err(value: BoardSnapshotReadError) -> RunRecordReadError {
+    match value {
+        BoardSnapshotReadError::Io(e) => RunRecordReadError::Io(e),
+        BoardSnapshotReadError::Magic(e) => RunRecordReadError::Magic(e),
+        BoardSnapshotReadError::UnexpectedFileKind {
+            path,
+            expected,
+            actual,
+        } => RunRecordReadError::UnexpectedFileKind {
+            path,
+            expected,
+            actual,
+        },
+        BoardSnapshotReadError::InvalidTimestamp(e) => RunRecordReadError::InvalidTimestamp(e),
+        BoardSnapshotReadError::Parse(e) => RunRecordReadError::Parse(e),
+        BoardSnapshotReadError::LoadedBoardSize(_) => {
+            // Embedded board-block reads catch this variant explicitly and wrap
+            // it as BoardBlockTooLarge; standalone reads of the embedded path
+            // never see one. If this fires we have a bug above this layer.
+            unreachable!(
+                "LoadedBoardSize must be wrapped as BoardBlockTooLarge before reaching map_board_snapshot_err"
+            )
+        }
+        BoardSnapshotReadError::FileTooLarge {
+            path,
+            actual_bytes,
+            limit_bytes,
+        } => RunRecordReadError::FileTooLarge {
+            path,
+            actual_bytes,
+            limit_bytes,
+        },
+        BoardSnapshotReadError::MalformedSizeHeader { location, value } => {
+            RunRecordReadError::MalformedSizeHeader { location, value }
         }
     }
 }
@@ -471,11 +480,7 @@ fn write_run_record_body<W: Write>(writer: &mut W, record: &RunRecord) -> io::Re
     writeln!(writer)?;
 
     writeln!(writer, "[config]")?;
-    writeln!(
-        writer,
-        "board_size: {}x{}",
-        record.config.board_size.0, record.config.board_size.1
-    )?;
+    writeln!(writer, "board_size: {}", record.config.board_size)?;
     writeln!(writer, "max_iterations: {}", record.config.max_iterations)?;
     writeln!(
         writer,
@@ -736,7 +741,7 @@ fn slurp_with_size_guard_into_run_error(
             actual_bytes,
             limit_bytes,
         }),
-        Err(other) => Err(other.into()),
+        Err(other) => Err(map_board_snapshot_err(other)),
     }
 }
 
@@ -744,7 +749,7 @@ fn cursor_skip_magic(
     cursor: &mut LineCursor<'_>,
     expected: &str,
 ) -> Result<(), RunRecordReadError> {
-    let line = cursor.next_logical().map_err(RunRecordReadError::from)?;
+    let line = cursor.next_logical().map_err(map_board_snapshot_err)?;
     let line = line.ok_or_else(|| ParseError::UnexpectedEnd {
         location: cursor.eof_location(),
         expected: format!("'{expected}'"),
@@ -793,7 +798,7 @@ fn parse_run_header(cursor: &mut LineCursor<'_>) -> Result<RunHeader, RunRecordR
     let mut tool_version: Option<String> = None;
 
     loop {
-        let peek = cursor.peek_logical().map_err(RunRecordReadError::from)?;
+        let peek = cursor.peek_logical().map_err(map_board_snapshot_err)?;
         let line = match peek {
             Some(l) => l,
             None => break,
@@ -872,7 +877,7 @@ fn parse_config_section(
     cursor: &mut LineCursor<'_>,
 ) -> Result<RunRecordConfig, RunRecordReadError> {
     expect_section_header(cursor, "config")?;
-    let mut board_size: Option<(usize, usize)> = None;
+    let mut board_size: Option<BoardSize> = None;
     let mut max_iterations: Option<usize> = None;
     let mut max_board_memory_bytes: Option<usize> = None;
     let mut initial_board_source: Option<String> = None;
@@ -881,7 +886,7 @@ fn parse_config_section(
     let mut continued_from: Option<Option<RunId>> = None;
 
     loop {
-        let peek = cursor.peek_logical().map_err(RunRecordReadError::from)?;
+        let peek = cursor.peek_logical().map_err(map_board_snapshot_err)?;
         let line = match peek {
             Some(l) => l,
             None => break,
@@ -1004,7 +1009,7 @@ fn parse_result_section(
     let mut final_board_hash: Option<u64> = None;
 
     loop {
-        let peek = cursor.peek_logical().map_err(RunRecordReadError::from)?;
+        let peek = cursor.peek_logical().map_err(map_board_snapshot_err)?;
         let line = match peek {
             Some(l) => l,
             None => break,
@@ -1121,7 +1126,7 @@ fn expect_section_header(
 ) -> Result<(), RunRecordReadError> {
     let line = cursor
         .next_logical()
-        .map_err(RunRecordReadError::from)?
+        .map_err(map_board_snapshot_err)?
         .ok_or_else(|| ParseError::UnexpectedEnd {
             location: cursor.eof_location(),
             expected: format!("[{expected}]"),
@@ -1141,15 +1146,8 @@ fn expect_section_header(
     Ok(())
 }
 
-fn parse_size_value(value: &str) -> Option<(usize, usize)> {
-    let trimmed = value.trim();
-    let mut parts = trimmed.split(['x', 'X']);
-    let w = parts.next()?.trim().parse::<usize>().ok()?;
-    let h = parts.next()?.trim().parse::<usize>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some((w, h))
+fn parse_size_value(value: &str) -> Option<BoardSize> {
+    BoardSize::parse(value).ok()
 }
 
 fn parse_usize_field(
@@ -1198,7 +1196,7 @@ fn read_embedded_board_block(
                 source,
             })
         }
-        Err(other) => Err(other.into()),
+        Err(other) => Err(map_board_snapshot_err(other)),
     }
 }
 

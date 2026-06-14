@@ -18,7 +18,7 @@ use game_of_life::persistence::{
 };
 use game_of_life::stats::{AdvanceOutcome, RunStatisticsCollector};
 use game_of_life::{
-    parse_cli_args, BlinkerBoardInitializer, BoardInitializer, BoardUpdater, CliCommand,
+    parse_cli_args, BlinkerBoardInitializer, BoardInitializer, BoardSize, BoardUpdater, CliCommand,
     DemoBoardInitializer, ExtractBoardConfig, FullyAliveInitializer, InMemoryBoard,
     InMemoryBoardCreationError, InPlaceTransitionalUpdater, InitialBoardSource, InitialBoardSpec,
     IntegrityMode, LoadFrom, RandomBoardInitializer, ReplayConfig, SaveSettings, SimulationConfig,
@@ -131,8 +131,8 @@ enum RunSimulationError {
         source: std::io::Error,
     },
     BoardSizeMismatch {
-        from_file: (usize, usize),
-        from_cli: (usize, usize),
+        from_file: BoardSize,
+        from_cli: BoardSize,
     },
     CumulativeMaxTooSmall {
         cumulative_max: usize,
@@ -159,8 +159,7 @@ impl std::fmt::Display for RunSimulationError {
             ),
             RunSimulationError::BoardSizeMismatch { from_file, from_cli } => write!(
                 f,
-                "Board size mismatch: file declares {}x{}, --board-size declares {}x{}. Either drop --board-size or pass the matching size.",
-                from_file.0, from_file.1, from_cli.0, from_cli.1
+                "Board size mismatch: file declares {from_file}, --board-size declares {from_cli}. Either drop --board-size or pass the matching size.",
             ),
             RunSimulationError::CumulativeMaxTooSmall {
                 cumulative_max,
@@ -216,8 +215,9 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
             if (initial.board.width(), initial.board.height()) != (cli_size.width, cli_size.height)
             {
                 return Err(RunSimulationError::BoardSizeMismatch {
-                    from_file: (initial.board.width(), initial.board.height()),
-                    from_cli: (cli_size.width, cli_size.height),
+                    from_file: BoardSize::new(initial.board.width(), initial.board.height())
+                        .expect("loaded board has valid dimensions"),
+                    from_cli: cli_size,
                 });
             }
         }
@@ -227,7 +227,8 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
         eprintln!("{warning}");
     }
 
-    let board_size = (initial.board.width(), initial.board.height());
+    let board_size = BoardSize::new(initial.board.width(), initial.board.height())
+        .expect("resolved initial board has valid dimensions");
     let max_iterations = initial.effective_max_iterations.unwrap_or_else(|| {
         // Fall back to CLI default when not derived from --additional-iterations.
         config.effective_max_iterations()
@@ -261,7 +262,7 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
     let stats = collector.finalize(status);
 
     println!("Game of Life");
-    println!("Board size: {}x{}", board_size.0, board_size.1);
+    println!("Board size: {board_size}");
     println!("Max iterations: {max_iterations}");
     println!("Max board memory: {} bytes", config.max_board_memory_bytes);
     println!("Initial board: {}", config.initial_board.record_label());
@@ -476,7 +477,7 @@ fn count_alive(board: &InMemoryBoard) -> u64 {
 #[allow(clippy::too_many_arguments)]
 fn build_run_record(
     run_id: RunId,
-    board_size: (usize, usize),
+    board_size: BoardSize,
     max_iterations: usize,
     max_board_memory_bytes: usize,
     initial_board_spec: &InitialBoardSpec,
@@ -618,7 +619,10 @@ fn replay(config: &ReplayConfig) -> Result<ReplayOutcome, ReplayError> {
         // the initializer is still deterministic.
         let source =
             InitialBoardSource::parse(initial_label.trim()).unwrap_or(InitialBoardSource::Demo);
-        let (w, h) = record.config.board_size;
+        let (w, h) = (
+            record.config.board_size.width,
+            record.config.board_size.height,
+        );
         let mut b = InMemoryBoard::try_new(w, h, record.config.max_board_memory_bytes)?;
         seed_with_initializer(source, &mut b, record.config.random_seed);
         b

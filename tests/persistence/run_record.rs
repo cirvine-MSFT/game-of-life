@@ -12,7 +12,7 @@ use game_of_life::persistence::{
     RunRecordReadError, RunRecordResult, RunRecordWriteError, BOARD_SNAPSHOT_MAGIC,
     DEFAULT_MAX_INPUT_FILE_BYTES, SCHEMA_VERSION, TOOL_VERSION,
 };
-use game_of_life::{CellState, InMemoryBoard};
+use game_of_life::{BoardSize, CellState, InMemoryBoard};
 
 static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -50,7 +50,7 @@ fn fixture_record() -> RunRecord {
         created_at: UNIX_EPOCH + Duration::from_secs(1_780_000_000),
         tool_version: TOOL_VERSION.to_string(),
         config: RunRecordConfig {
-            board_size: (3, 3),
+            board_size: BoardSize::new(3, 3).unwrap(),
             max_iterations: 10,
             max_board_memory_bytes: 64 * 1024 * 1024,
             initial_board_source: "random".to_string(),

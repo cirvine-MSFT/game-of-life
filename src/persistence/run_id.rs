@@ -50,6 +50,13 @@ impl fmt::Display for RunId {
     }
 }
 
+impl std::str::FromStr for RunId {
+    type Err = RunIdParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_run_id(s)
+    }
+}
+
 /// Formats a `RunId` as canonical lowercase 8-4-4-4-12 hex.
 pub fn format_run_id(id: &RunId) -> String {
     let b = &id.0;
