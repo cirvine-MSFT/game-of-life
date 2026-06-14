@@ -1,0 +1,4 @@
+NOT-A-GAME-OF-LIFE-FILE v99
+this file intentionally starts with the wrong magic line so the
+reader rejects it. The .gol extension is purely conventional;
+recognition is based on the magic prefix.

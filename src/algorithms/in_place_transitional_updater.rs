@@ -1,4 +1,5 @@
 use crate::board::{BoardEditor, CellCoordinate, CellState};
+use crate::stats::AdvanceOutcome;
 
 use super::BoardUpdater;
 
@@ -7,7 +8,10 @@ use super::BoardUpdater;
 pub struct InPlaceTransitionalUpdater;
 
 impl BoardUpdater for InPlaceTransitionalUpdater {
-    fn advance_generation<B: BoardEditor + ?Sized>(&self, board: &mut B) -> Result<(), B::Error> {
+    fn advance_generation<B: BoardEditor + ?Sized>(
+        &self,
+        board: &mut B,
+    ) -> Result<AdvanceOutcome, B::Error> {
         let mut neighbor_coordinates = Vec::with_capacity(8);
         let mut neighbor_states = Vec::with_capacity(8);
 
@@ -25,16 +29,26 @@ impl BoardUpdater for InPlaceTransitionalUpdater {
             }
         }
 
+        let mut births = 0u64;
+        let mut deaths = 0u64;
+        let mut alive_count = 0u64;
         for y in 0..board.height() {
             for x in 0..board.width() {
                 let coordinate = CellCoordinate::new(x, y);
-                board.set_cell(
-                    coordinate,
-                    normalize_cell_state(board.cell_state(coordinate)?),
-                )?;
+                let raw = board.cell_state(coordinate)?;
+                match raw {
+                    CellState::Resurrecting => births += 1,
+                    CellState::Dying => deaths += 1,
+                    _ => {}
+                }
+                let normalized = normalize_cell_state(raw);
+                if matches!(normalized, CellState::Alive) {
+                    alive_count += 1;
+                }
+                board.set_cell(coordinate, normalized)?;
             }
         }
-        Ok(())
+        Ok(AdvanceOutcome::from_counts(births, deaths, alive_count))
     }
 }
 

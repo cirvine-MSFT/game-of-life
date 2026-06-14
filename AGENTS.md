@@ -20,6 +20,49 @@ Every change must satisfy:
 - [ ] `cargo build --release` succeeds
 - [ ] Console binary runs without crash: `./target/release/game-of-life`
 
+## Comment Style
+
+Comments must earn their place. The rules:
+
+1. **No comments that just restate what the code or signature already says.** If the doc paraphrases the function name, types, or body, delete it — Rust signatures and well-named symbols carry that information by themselves.
+2. **Do comment WHY.** Design rationale, threat models, performance tradeoffs, historical decisions, and non-obvious gotchas all belong in comments. The reader can see *what* the code does; you're there to explain *why it's that way*.
+3. **Do document non-obvious contracts.** Preconditions, postconditions, panic conditions, ordering requirements, and accepted input shapes are not always inferable from the signature and are worth a comment.
+4. **If the code is hard to read, fix the code first.** Reach for comments only when restructuring/renaming wouldn't have made the code self-explanatory.
+
+Examples that pass: explaining why a `--continue` cumulative max is rejected when `<= source.iterations_run`; documenting that `parse_run_id` deliberately skips v4-bit enforcement so synthetic test IDs round-trip; noting that the file integrity hash is for accidental edits and bit flips, not adversarial tampering.
+
+Examples that fail and should be removed: `/// Builds a snapshot wrapping the given board.` over `fn for_board(board) -> Self`; `/// Number of cells that transitioned from dead to alive` over a `pub births: u64` field.
+
+## Test Style
+
+All tests live in `tests/` (Cargo integration test style). No inline `#[cfg(test)] mod tests {}` blocks inside `src/` modules — they're idiomatic in Rust but **not used in this repo**.
+
+Two consequences worth being explicit about:
+
+1. **Tests can only see the public API.** Integration tests sit outside the crate, so they cannot reach private or `pub(crate)` items. Private implementation details are free to refactor without breaking tests.
+2. **Tests verify contracts, not implementations.** If a behavior is worth testing, the corresponding function/type/value should be public. If you find yourself wanting to test a private helper, either:
+   - Test the public function that calls it (the helper is implementation detail), OR
+   - Promote the helper to public if it really is a meaningful library surface.
+
+File layout — `tests/` mirrors `src/`:
+
+```
+src/                            tests/
+  persistence/  ───────────►      persistence.rs          ← wrapper (cargo test entry)
+    hash.rs                       persistence/
+    magic.rs                        hash.rs               ← tests for src/persistence/hash.rs
+    ...                             magic.rs
+                                    ...
+  stats/        ───────────►      stats.rs
+    run_statistics.rs               stats/
+                                    run_statistics.rs
+  config.rs     ───────────►      config_tests.rs        ← flat module → flat test file
+```
+
+Why the wrapper file: cargo's integration-test discovery only picks up top-level `tests/*.rs` files as test binaries. Files inside `tests/<module>/` need a `tests/<module>.rs` wrapper that declares each submodule with `#[path = "<module>/<file>.rs"] mod <file>;`. The `#[path]` is required because each `tests/*.rs` is its own crate root, so the default `mod foo;` lookup looks for `tests/foo.rs` (sibling) instead of `tests/<wrapper>/foo.rs` (child). See `tests/persistence.rs` and `tests/stats.rs` for the pattern.
+
+End-to-end binary-driven tests (e.g. CLI tests that drive the actual binary via `Command::new(env!("CARGO_BIN_EXE_game-of-life"))`) live alongside their module — `tests/persistence/cli.rs` covers binary-driven persistence behavior.
+
 ## What Can Be Changed
 
 ✅ **Safe to modify:**

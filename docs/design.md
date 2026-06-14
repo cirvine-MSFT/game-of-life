@@ -156,13 +156,16 @@ The fully alive source is useful for exercising overpopulation behavior, but it 
 src/
   algorithms/  - Algorithm traits and concrete initializer/update implementations
   board/       - Board traits, cell model, and concrete board implementations
-  config.rs    - SimulationConfig, BoardSize, and CLI/config parsing
+  config.rs    - SimulationConfig, BoardSize, CLI/config parsing
   lib.rs       - Public module declarations and re-exports
   main.rs      - Console application binary
+  persistence/ - Run record and board snapshot file IO (zero deps)
+  stats/       - Per-generation AdvanceOutcome and RunStatistics
 tests/
-  board_tests.rs   - Board API and Game of Life behavior
-  config_tests.rs  - Configuration and parser behavior
-  cli_tests.rs     - End-to-end binary behavior
+  board_tests.rs            - Board API and Game of Life behavior
+  config_tests.rs           - Configuration and parser behavior
+  cli_tests.rs              - End-to-end binary behavior for the core run
+  persistence_cli_tests.rs  - End-to-end save/load/replay/extract/continue
 Cargo.toml     - Project manifest with library and binary targets
 ```
 
@@ -173,6 +176,75 @@ Cargo.toml     - Project manifest with library and binary targets
 - Grid-based test construction keeps board expectations readable
 - `edge_case_` labels identify valid boundary behavior
 - `negative_` labels identify invalid input and actionable error-message behavior
+
+## Persistence Design
+
+Every successful run auto-saves a **run record** to disk. The same parser handles two related file types so users can extract, edit, and share board states without losing the audit trail.
+
+### File types
+
+| Type | Magic | Purpose | Hash |
+|------|-------|---------|------|
+| **Run record** | `GOL-RUN-RECORD v1` | Full record of one simulation: config, statistics, initial board, final board | `content_hash` trailer (mandatory) |
+| **Board snapshot** | `GOL-BOARD-SNAPSHOT v1` | Standalone board with a tiny header; hand-craftable, hand-editable | None — intentionally hash-free |
+
+The two types share one parser pair. A run record embeds two fenced board blocks (`INITIAL BOARD` and `FINAL BOARD`); a standalone snapshot is just one fenced block (`BOARD`) with a brief header. The `--extract-board` verb writes a snapshot from a run record's `INITIAL` or `FINAL` block.
+
+### File safety and validation
+
+Every file is sniffed before it's slurped:
+
+- **Magic prefix.** Standard Unix-derived term for a short, fixed marker at the start of a file that identifies its format — same idea as `%PDF-` for PDF files or `#!/usr/bin/env` for shell scripts. The first non-empty line must be one of the recognized magics. Sniffing is bounded to 128 bytes (or the first newline) so it can't be a DoS vector on huge files.
+- **Max file size guard.** Before reading the body, `stat()` the file; reject anything larger than `--max-input-file-bytes` (default 256 MiB).
+- **Grid integrity.** Inside any board block: declared `size:` must match grid dimensions, every row must have the same width, every cell character must be `.` or `#`, and the derived `alive_count` / `dead_count` headers must match the grid.
+- **Section integrity.** Required fields enforced per section; duplicate keys rejected; fence ordering and balance enforced; unknown `schema_version` rejected with a clear "supported versions: [1]" message.
+- **Memory-budget validation for loaded boards.** Before allocating a grid, the declared `WxH` is checked against the configured `--max-board-memory`. Three distinct outcomes:
+  1. Fits — allocate normally.
+  2. Exceeds the budget but is theoretically reachable: `LoadedBoardExceedsMemoryBudget` with a concrete suggested `--max-board-memory` override embedded in the message.
+  3. Exceeds anything the platform could hold: `LoadedBoardExceedsAddressableMemory`, pointing at the future streaming-board work as the planned remedy.
+- For run records, board-block memory errors are wrapped as `RunRecordReadError::BoardBlockTooLarge { block, run_id, source }` so the message identifies which block failed and which source run it came from.
+
+### Integrity (`content_hash`)
+
+Run records carry a `content_hash:` trailer at the end of the file. Threat model is explicit: accidental edits, partial writes, bit flips. **Not adversarial tamper detection** — a 64-bit non-crypto FNV-1a hash is right-sized for "user made a typo in vim".
+
+- The writer computes the hash over the canonical UTF-8 bytes of everything in the file from the magic line up to (and including) the newline preceding the trailer, then appends the trailer.
+- The reader **canonicalizes** the file in-memory before hashing: LF line endings, trimmed trailing whitespace per line, exactly one trailing newline. This means a Windows editor saving the file in CRLF does not break verification.
+- Mismatch → `RunRecordReadError::Corrupted { path, expected_hash, actual_hash }`. The user-facing message includes both hashes and offers two concrete remedies:
+  1. `--ignore-integrity` if the edit was deliberate (prints a `Warning:` and downgrades per-grid hash mismatches to warnings).
+  2. `--extract-board <path> --load-from initial|final --output snapshot.gol` to extract just the board as a freely-editable snapshot.
+
+Board snapshots intentionally do **not** carry `content_hash`. They're designed for hand-crafting and hand-editing — enforcing integrity there would defeat the use case.
+
+### Per-grid hashes
+
+The `[result]` section of every run record also carries `initial_board_hash` and `final_board_hash` (also FNV-1a 64-bit, over the row-by-row ASCII grid bytes). These are cross-reference / de-dup helpers — useful for `grep final_board_hash runs/*.gol` to find runs that ended at the same state. They are verified by the reader (mismatch is a corruption error under `Enforce`; downgraded to a warning under `Ignore`).
+
+### Run statistics
+
+A `RunStatisticsCollector` observes one `AdvanceOutcome` per generation (births, deaths, alive count) and finalizes into a `RunStatistics` value at end of run. The updater reports `AdvanceOutcome` directly from the normalize pass, so stats are O(1) per generation with no extra full-board scan.
+
+Recorded statistics: `status` (`extinct` / `max_iterations`; `stable` and `cyclic` are reserved for the cycle-detection follow-up), `iterations_run`, `wall_time_ms`, `initial_alive_count`, `final_alive_count`, `peak_alive_count`, `peak_alive_generation`, `min_alive_count`, `min_alive_generation`, `total_births`, `total_deaths`.
+
+### Early-stop conditions
+
+Only one: **extinction**. If every cell is dead after a generation, the run early-stops with `status: extinct`. Cycle and still-life detection are deferred to a follow-up PR; the format reserves the `stable` and `cyclic` status values so old files stay forward-compatible.
+
+### CLI surface
+
+- `--runs-dir`, `--save-run`, `--no-save` — control where (and whether) the auto-save lands.
+- `--load-board`, `--load-from` — start a new run from a snapshot or a recorded board.
+- `--continue`, `--additional-iterations` — load a prior run's FINAL board and run further. Records `continued_from: <source-run-id>` for provenance. The iteration budget can be specified two ways: `--additional-iterations N` means "run for N more steps"; `--max-iterations M` (when paired with `--continue`) means "target a cumulative total of M steps across the chain" and runs for `M - source.iterations_run` more. The two budget flags are mutually exclusive; cumulative `M <= source.iterations_run` is rejected with a clear error.
+- `--replay <PATH>` — re-execute a run record and diff final board + key stats.
+- `--extract-board <PATH> --output <PATH>` — write a snapshot from a run record's `INITIAL` or `FINAL` block.
+- `--ignore-integrity` — opt-in bypass of the `content_hash` check (warns on stderr).
+- `--max-input-file-bytes` — per-invocation override of the input file size guard.
+
+### Deferred (future PRs)
+
+- **Streaming board** — windowed file-backed board impl. The format is designed to enable this (fixed-width rows, `size:` header, fence markers allow `seek`); the impl is its own PR.
+- **Cycle and still-life detection** — adds `status: stable` and `status: cyclic` to the writer. Format already reserves them.
+- **Cryptographic signing** — separate from the integrity check above; would need adversarial threat model.
 
 ## Cross-Platform Considerations
 

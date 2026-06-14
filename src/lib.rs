@@ -9,6 +9,8 @@
 pub mod algorithms;
 pub mod board;
 pub mod config;
+pub mod persistence;
+pub mod stats;
 
 pub use algorithms::{
     BlinkerBoardInitializer, BoardInitializer, BoardUpdater, CenteredBlinkerInitializer,
@@ -17,10 +19,13 @@ pub use algorithms::{
     MAX_ALIVE_CELLS_PER_THOUSAND,
 };
 pub use board::{
-    BoardEditor, BoardView, CellCoordinate, CellState, InMemoryBoard, InMemoryBoardCreationError,
+    BoardEditor, BoardSize, BoardSizeParseError, BoardView, CellCoordinate, CellState,
+    InMemoryBoard, InMemoryBoardCreationError, DEFAULT_BOARD_HEIGHT, DEFAULT_BOARD_WIDTH,
 };
 pub use config::{
-    parse_cli_args, parse_memory_size, BoardSize, BoardSizeParseError, CliCommand, ConfigError,
-    InitialBoardSource, InitialBoardSourceParseError, IterationParseError, MemorySizeParseError,
-    SimulationConfig, DEFAULT_MAX_BOARD_MEMORY_BYTES,
+    parse_cli_args, parse_memory_size, CliCommand, ConfigError, ContinuationBudget,
+    ExtractBoardConfig, InitialBoardSource, InitialBoardSourceParseError, InitialBoardSpec,
+    IntegrityMode, IterationParseError, LoadFrom, LoadFromParseError, MemorySizeParseError,
+    ReplayConfig, SaveSettings, SimulationConfig, DEFAULT_MAX_BOARD_MEMORY_BYTES, DEFAULT_RUNS_DIR,
 };
+pub use stats::{AdvanceOutcome, RunStatistics, RunStatisticsCollector};

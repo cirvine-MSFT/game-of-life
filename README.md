@@ -36,6 +36,9 @@ cargo build --release
 # Run console application
 .\target\release\game-of-life.exe
 
+# Run the smoke test the same way CI does (requires Git Bash on Windows)
+bash ./scripts/smoke-test.sh
+
 # Show CLI options
 .\target\release\game-of-life.exe --help
 
@@ -59,6 +62,9 @@ cargo build --release
 # Run console application
 ./target/release/game-of-life
 
+# Run the smoke test the same way CI does
+./scripts/smoke-test.sh
+
 # Show CLI options
 ./target/release/game-of-life --help
 
@@ -70,13 +76,103 @@ The console app prints concise run information and the final board state only. P
 
 ### Command-line options
 
+#### Run options
+
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-h`, `--help` | Print usage and supported options. | N/A |
 | `-b`, `--board-size <WIDTHxHEIGHT>` | Set the bounded 2D board size, such as `5x5` or `10x20`. | `10x10` |
 | `-m`, `--max-iterations <COUNT>` | Set how many generations to run. Use `0` to print the initial board as the final state. | `10` |
 | `--max-board-memory <SIZE>` | Set the in-memory board budget. Supports raw bytes plus `B`, `KB`, `MB`, and `GB` suffixes, such as `64MB`. | `64MB` |
+| `--max-input-file-bytes <SIZE>` | Ceiling on the size of input files (snapshots, run records). | `256MB` |
 | `--initial-board <SOURCE>` | Set the initial board source. Supported values are `demo`, `alive`, `blinker`, and `random`. | `demo` |
+| `--load-board <PATH>` | Load the initial board from a `.gol` file (board snapshot or run record). Mutually exclusive with `--initial-board` and `--continue`. | N/A |
+| `--load-from initial\|final` | When `--load-board` points at a run record, pick which embedded block to use. | `initial` |
+| `--continue <PATH>` | Continue a prior run record: load its FINAL board as the initial board. Requires one of `--additional-iterations` or `--max-iterations` (see below). Mutually exclusive with `--load-board` and `--initial-board`. | N/A |
+| `--additional-iterations <N>` | With `--continue`: run **N more** generations. Mutually exclusive with `--max-iterations`. | N/A |
+| `-m`, `--max-iterations <COUNT>` with `--continue` | With `--continue`: target a **cumulative total** of `COUNT` iterations across the chain (continuation runs for `COUNT - source.iterations_run` more). Errors if `COUNT` is not strictly greater than the source run's `iterations_run`. Without `--continue`, just bounds this run's loop as usual. | `10` |
+
+#### Save options
+
+By default, every successful run auto-saves a record into `./runs/` with a filename of the form `<UTC-timestamp>-<short-run-id>.gol`. The save never overwrites an existing file.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--runs-dir <DIR>` | Save run records into this directory; created if missing. | `./runs` |
+| `--save-run <PATH>` | Save the run record to this explicit path (no auto-naming). Overrides `--runs-dir`. | N/A |
+| `--no-save` | Suppress saving the run record entirely. | N/A |
+
+#### Integrity
+
+| Option | Description |
+|--------|-------------|
+| `--ignore-integrity` | Bypass the `content_hash` integrity check when reading a run record. Prints a `Warning:` on stderr and downgrades per-grid hash mismatches from errors to warnings. |
+
+#### Verbs
+
+In addition to a normal run, the binary exposes three standalone verbs:
+
+| Verb | Description |
+|------|-------------|
+| `--replay <PATH>` | Re-execute a saved run record and diff its final board and key stats against the captured values. Exits 0 on match, non-zero on divergence with a structured diff on stderr. |
+| `--extract-board <PATH> --output <SNAPSHOT-PATH>` | Extract one of the embedded board blocks (`INITIAL` or `FINAL`, selected via `--load-from`) from a run record and write it as a standalone, hash-free board snapshot. Use this to craft new starting boards from existing runs. |
+
+### Examples
+
+The repo ships with a small `examples/` directory of hand-curated `.gol` files:
+
+- `examples/patterns/` — happy-path snapshots you can load directly (block, blinker, glider, R-pentomino). `--load-board examples/patterns/glider.gol --max-iterations 50` is a good first run.
+- `examples/negative/` — **intentionally malformed files** that demonstrate the reader's error UX. Each one triggers a different error class (magic mismatch, truncated grid, bad cell character, count mismatch, unsupported encoding). See [`examples/README.md`](examples/README.md) for the full table.
+
+### Persistence file format
+
+Two file types share one parser pair (see [docs/design.md](docs/design.md) for the full spec):
+
+- **Run record** (`GOL-RUN-RECORD v1`): auto-saved at the end of every run. Captures the configuration, run statistics, the initial board, and the final board. Protected by a `content_hash` trailer.
+- **Board snapshot** (`GOL-BOARD-SNAPSHOT v1`): a standalone file containing just one board block plus a tiny header. Intentionally **hash-free** so users can hand-craft and hand-edit them. Use `--extract-board` to make one from a run record.
+
+Sample workflow for crafting a new board from a prior run:
+
+```powershell
+# 1. Run something, get a run record saved to ./runs/.
+.\target\release\game-of-life.exe --board-size 10x10 --max-iterations 50
+
+# 2. Extract its FINAL board as a freely-editable snapshot.
+.\target\release\game-of-life.exe `
+    --extract-board runs\20260612T225520Z-7b3a1f0c.gol `
+    --load-from final `
+    --output edit-me.gol
+
+# 3. Edit edit-me.gol in your text editor. No hash to update.
+
+# 4. Use it as the initial board for a new run.
+.\target\release\game-of-life.exe --load-board edit-me.gol --max-iterations 100
+```
+
+To reproduce a run from its record:
+
+```powershell
+.\target\release\game-of-life.exe --replay runs\20260612T225520Z-7b3a1f0c.gol
+```
+
+To continue a run for more generations (with full provenance recorded):
+
+```powershell
+.\target\release\game-of-life.exe `
+To continue a run for more generations (with full provenance recorded):
+
+```powershell
+# Either form works:
+.\target\release\game-of-life.exe `
+    --continue runs\20260612T225520Z-7b3a1f0c.gol `
+    --additional-iterations 100
+
+# ...or in cumulative form (run until the chain has 200 total iterations):
+.\target\release\game-of-life.exe `
+    --continue runs\20260612T225520Z-7b3a1f0c.gol `
+    --max-iterations 200
+```
+```
 
 ### Algorithm Overview
 
@@ -118,3 +214,4 @@ For each generation:
 ## Maintenance guidance
 
 See [docs/product-code.md](docs/product-code.md) for product module conventions and [docs/testing.md](docs/testing.md) for test organization, `edge_case_` labels, and `negative_` labels.
+For the persistence file format, integrity model, and CLI verbs, see the **Persistence** section in [docs/design.md](docs/design.md).

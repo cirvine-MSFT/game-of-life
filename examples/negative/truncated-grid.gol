@@ -1,0 +1,13 @@
+GOL-BOARD-SNAPSHOT v1
+schema_version: 1
+created_at: 2026-06-13T00:00:00Z
+
+----- BEGIN BOARD -----
+size: 5x5
+encoding: ascii
+alive_count: 3
+dead_count: 22
+.....
+.....
+.###.
+----- END BOARD -----

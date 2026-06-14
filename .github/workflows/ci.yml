@@ -78,12 +78,4 @@ jobs:
 
       - name: Console binary smoke test
         shell: bash
-        run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            ./target/release/game-of-life.exe > console_output.txt
-          else
-            ./target/release/game-of-life > console_output.txt
-          fi
-          test -s console_output.txt
-          grep -q "Generation 0:" console_output.txt
-          grep -q "^[.#]*$" console_output.txt
+        run: ./scripts/smoke-test.sh

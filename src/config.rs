@@ -1,93 +1,191 @@
 use std::fmt;
+use std::path::PathBuf;
 
-pub const DEFAULT_BOARD_WIDTH: usize = 10;
-pub const DEFAULT_BOARD_HEIGHT: usize = 10;
+use crate::board::{BoardSize, BoardSizeParseError};
+use crate::persistence;
+
 pub const DEFAULT_MAX_ITERATIONS: usize = 10;
 pub const DEFAULT_MAX_BOARD_MEMORY_BYTES: usize = 64 * 1024 * 1024;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BoardSize {
-    pub width: usize,
-    pub height: usize,
-}
-
-impl BoardSize {
-    pub fn new(width: usize, height: usize) -> Result<Self, BoardSizeParseError> {
-        if width == 0 {
-            return Err(BoardSizeParseError::ZeroDimension { dimension: "width" });
-        }
-        if height == 0 {
-            return Err(BoardSizeParseError::ZeroDimension {
-                dimension: "height",
-            });
-        }
-        if width.checked_mul(height).is_none() {
-            return Err(BoardSizeParseError::BoardTooLarge { width, height });
-        }
-        Ok(Self { width, height })
-    }
-
-    pub fn parse(value: &str) -> Result<Self, BoardSizeParseError> {
-        let trimmed = value.trim();
-        let has_dimension_separator = trimmed.contains('x') || trimmed.contains('X');
-
-        if !has_dimension_separator {
-            if trimmed
-                .chars()
-                .any(|ch| !ch.is_ascii_digit() && !ch.is_ascii_whitespace())
-            {
-                return Err(BoardSizeParseError::UnsupportedSeparator {
-                    value: value.to_string(),
-                });
-            }
-            return Err(BoardSizeParseError::MissingSeparator {
-                value: value.to_string(),
-            });
-        }
-
-        let parts: Vec<&str> = trimmed.split(['x', 'X']).collect();
-        if parts.len() > 2 {
-            return Err(BoardSizeParseError::ExtraDimensions {
-                value: value.to_string(),
-            });
-        }
-
-        let width = parse_dimension(value, "width", parts[0])?;
-        let height = parse_dimension(value, "height", parts[1])?;
-        Self::new(width, height)
-    }
-}
-
-impl Default for BoardSize {
-    fn default() -> Self {
-        Self {
-            width: DEFAULT_BOARD_WIDTH,
-            height: DEFAULT_BOARD_HEIGHT,
-        }
-    }
-}
-
-impl fmt::Display for BoardSize {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}x{}", self.width, self.height)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimulationConfig {
-    pub board_size: BoardSize,
-    pub max_iterations: usize,
+    pub board_size: Option<BoardSize>,
+    pub max_iterations: Option<usize>,
     pub max_board_memory_bytes: usize,
-    pub initial_board: InitialBoardSource,
+    pub initial_board: InitialBoardSpec,
+    pub save: SaveSettings,
+    pub integrity: IntegrityMode,
+    pub max_input_file_bytes: usize,
+    /// Non-fatal warnings raised during CLI parsing (e.g. an option that was
+    /// silently overridden by a higher-precedence option). `main.rs` prints
+    /// these to stderr before starting the run so the user sees them in
+    /// context.
+    pub warnings: Vec<String>,
 }
 
 impl Default for SimulationConfig {
     fn default() -> Self {
         Self {
-            board_size: BoardSize::default(),
-            max_iterations: DEFAULT_MAX_ITERATIONS,
+            board_size: None,
+            max_iterations: None,
             max_board_memory_bytes: DEFAULT_MAX_BOARD_MEMORY_BYTES,
-            initial_board: InitialBoardSource::default(),
+            initial_board: InitialBoardSpec::Initializer(InitialBoardSource::default()),
+            save: SaveSettings::default(),
+            integrity: IntegrityMode::Enforce,
+            max_input_file_bytes: persistence::DEFAULT_MAX_INPUT_FILE_BYTES,
+            warnings: Vec::new(),
+        }
+    }
+}
+
+impl SimulationConfig {
+    /// Resolves the effective board size, applying the default when the user
+    /// didn't explicitly pass `--board-size`.
+    pub fn effective_board_size(&self) -> BoardSize {
+        self.board_size.unwrap_or_default()
+    }
+
+    /// Resolves the effective max-iterations, applying the default when the
+    /// user didn't explicitly pass `--max-iterations`.
+    pub fn effective_max_iterations(&self) -> usize {
+        self.max_iterations.unwrap_or(DEFAULT_MAX_ITERATIONS)
+    }
+}
+
+/// Specifies where the initial board for a run comes from. Either a
+/// stateless built-in initializer, a snapshot file, or a continuation of a
+/// prior run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InitialBoardSpec {
+    Initializer(InitialBoardSource),
+    LoadFromFile {
+        path: std::path::PathBuf,
+        from: Option<LoadFrom>,
+    },
+    ContinueFromRun {
+        path: std::path::PathBuf,
+        budget: ContinuationBudget,
+    },
+}
+
+/// How a `--continue` invocation expressed its iteration budget.
+///
+/// Both forms are accepted; only one may be provided per `--continue`. The
+/// difference shows up at resolution time:
+///
+/// - `Additional(N)` means "run for N more generations" regardless of how many
+///   the source already ran.
+/// - `CumulativeMax(M)` means "run until the chain's total reaches M", i.e. the
+///   continuation runs for `M - source.iterations_run` more. The resolver
+///   rejects values where `M <= source.iterations_run` so the user gets a
+///   clear error instead of a silent zero-iteration run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContinuationBudget {
+    Additional(usize),
+    CumulativeMax(usize),
+}
+
+impl InitialBoardSpec {
+    /// Human-readable label used in run-record `initial_board_source` field.
+    pub fn record_label(&self) -> String {
+        match self {
+            InitialBoardSpec::Initializer(source) => source.to_string(),
+            InitialBoardSpec::LoadFromFile { path, from } => match from {
+                Some(LoadFrom::Initial) => format!("load:{} (initial)", path.display()),
+                Some(LoadFrom::Final) => format!("load:{} (final)", path.display()),
+                None => format!("load:{}", path.display()),
+            },
+            InitialBoardSpec::ContinueFromRun { path, .. } => {
+                format!("continue:{}", path.display())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LoadFrom {
+    #[default]
+    Initial,
+    Final,
+}
+
+impl LoadFrom {
+    pub fn parse(value: &str) -> Result<Self, LoadFromParseError> {
+        match value.trim() {
+            "initial" => Ok(LoadFrom::Initial),
+            "final" => Ok(LoadFrom::Final),
+            other => Err(LoadFromParseError::Unsupported {
+                value: other.to_string(),
+            }),
+        }
+    }
+}
+
+impl fmt::Display for LoadFrom {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LoadFrom::Initial => f.write_str("initial"),
+            LoadFrom::Final => f.write_str("final"),
+        }
+    }
+}
+
+impl std::str::FromStr for LoadFrom {
+    type Err = LoadFromParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoadFromParseError {
+    Unsupported { value: String },
+}
+
+impl fmt::Display for LoadFromParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LoadFromParseError::Unsupported { value } => write!(
+                f,
+                "--load-from value '{value}' is not supported; use 'initial' or 'final'."
+            ),
+        }
+    }
+}
+
+impl std::error::Error for LoadFromParseError {}
+
+/// Where (and whether) to write the run record at the end of a simulation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SaveSettings {
+    /// Auto-save into a directory; filename derived from timestamp + run id.
+    AutoIntoDir(std::path::PathBuf),
+    /// Save to an explicit path; refuses to overwrite.
+    ExplicitFile(std::path::PathBuf),
+    /// Suppressed via `--no-save`.
+    Suppressed,
+}
+
+impl Default for SaveSettings {
+    fn default() -> Self {
+        SaveSettings::AutoIntoDir(std::path::PathBuf::from(DEFAULT_RUNS_DIR))
+    }
+}
+
+pub const DEFAULT_RUNS_DIR: &str = "runs";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum IntegrityMode {
+    #[default]
+    Enforce,
+    Ignore,
+}
+
+impl IntegrityMode {
+    pub fn to_content_hash_mode(self) -> persistence::ContentHashMode {
+        match self {
+            IntegrityMode::Enforce => persistence::ContentHashMode::Enforce,
+            IntegrityMode::Ignore => persistence::ContentHashMode::Ignore,
         }
     }
 }
@@ -133,6 +231,26 @@ impl fmt::Display for InitialBoardSource {
 pub enum CliCommand {
     Help,
     Run(SimulationConfig),
+    Replay(ReplayConfig),
+    ExtractBoard(ExtractBoardConfig),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplayConfig {
+    pub source: PathBuf,
+    pub max_board_memory_bytes: usize,
+    pub max_input_file_bytes: usize,
+    pub integrity: IntegrityMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtractBoardConfig {
+    pub source: PathBuf,
+    pub which: LoadFrom,
+    pub output: PathBuf,
+    pub max_board_memory_bytes: usize,
+    pub max_input_file_bytes: usize,
+    pub integrity: IntegrityMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,45 +268,21 @@ pub enum ConfigError {
     InvalidBoardSize(BoardSizeParseError),
     InvalidMaxIterations(IterationParseError),
     InvalidMaxBoardMemory(MemorySizeParseError),
+    InvalidMaxInputFileBytes(MemorySizeParseError),
     InvalidInitialBoard(InitialBoardSourceParseError),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BoardSizeParseError {
-    MissingSeparator {
-        value: String,
+    InvalidLoadFrom(LoadFromParseError),
+    ConflictingInitialBoardOptions {
+        details: &'static str,
     },
-    MissingDimension {
-        value: String,
-        dimension: &'static str,
+    ConflictingSaveOptions {
+        details: &'static str,
     },
-    ExtraDimensions {
-        value: String,
+    ConflictingCommands {
+        details: &'static str,
     },
-    UnsupportedSeparator {
-        value: String,
-    },
-    NegativeDimension {
-        value: String,
-        dimension: &'static str,
-        component: String,
-    },
-    NonIntegerDimension {
-        value: String,
-        dimension: &'static str,
-        component: String,
-    },
-    ZeroDimension {
-        dimension: &'static str,
-    },
-    DimensionTooLarge {
-        value: String,
-        dimension: &'static str,
-        component: String,
-    },
-    BoardTooLarge {
-        width: usize,
-        height: usize,
+    MissingRequiredOption {
+        option: &'static str,
+        context: &'static str,
     },
 }
 
@@ -220,84 +314,351 @@ where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
-    let mut config = SimulationConfig::default();
-    let mut args = args.into_iter().map(Into::into).peekable();
+    let raw: Vec<String> = args.into_iter().map(Into::into).collect();
+    let mut args = raw.into_iter().peekable();
+
+    // Pending option tracking across the loop.
+    let mut board_size: Option<BoardSize> = None;
+    let mut max_iterations: Option<usize> = None;
+    let mut max_board_memory_bytes: usize = DEFAULT_MAX_BOARD_MEMORY_BYTES;
+    let mut max_input_file_bytes: usize = persistence::DEFAULT_MAX_INPUT_FILE_BYTES;
+    let mut initial_board_named: Option<InitialBoardSource> = None;
+    let mut load_board_path: Option<PathBuf> = None;
+    let mut load_from: Option<LoadFrom> = None;
+    let mut continue_path: Option<PathBuf> = None;
+    let mut additional_iterations: Option<usize> = None;
+    let mut save_run_path: Option<PathBuf> = None;
+    let mut runs_dir: Option<PathBuf> = None;
+    let mut no_save = false;
+    let mut integrity = IntegrityMode::Enforce;
+    let mut replay_path: Option<PathBuf> = None;
+    let mut extract_board_path: Option<PathBuf> = None;
+    let mut extract_output_path: Option<PathBuf> = None;
 
     while let Some(arg) = args.next() {
         if arg == "--help" || arg == "-h" {
             return Ok(CliCommand::Help);
         }
 
+        // Helper closures.
+        let take_value = |peek: &mut std::iter::Peekable<std::vec::IntoIter<String>>,
+                          option: &str,
+                          expected: &'static str|
+         -> Result<String, ConfigError> {
+            peek.next().ok_or_else(|| ConfigError::MissingOptionValue {
+                option: option.to_string(),
+                expected,
+            })
+        };
+
         if arg == "--board-size" || arg == "-b" {
-            let value = args.next().ok_or_else(|| ConfigError::MissingOptionValue {
-                option: arg.clone(),
-                expected: "a board size like 5x5",
-            })?;
-            config.board_size = BoardSize::parse(&value).map_err(ConfigError::InvalidBoardSize)?;
+            let value = take_value(&mut args, &arg, "a board size like 5x5")?;
+            board_size = Some(BoardSize::parse(&value).map_err(ConfigError::InvalidBoardSize)?);
             continue;
         }
-
         if let Some(value) = arg.strip_prefix("--board-size=") {
-            config.board_size = BoardSize::parse(value).map_err(ConfigError::InvalidBoardSize)?;
+            board_size = Some(BoardSize::parse(value).map_err(ConfigError::InvalidBoardSize)?);
             continue;
         }
 
         if arg == "--max-iterations" || arg == "-m" {
-            let value = args.next().ok_or_else(|| ConfigError::MissingOptionValue {
-                option: arg.clone(),
-                expected: "a non-negative integer like 10",
-            })?;
-            config.max_iterations =
-                parse_max_iterations(&value).map_err(ConfigError::InvalidMaxIterations)?;
+            let value = take_value(&mut args, &arg, "a non-negative integer like 10")?;
+            max_iterations =
+                Some(parse_max_iterations(&value).map_err(ConfigError::InvalidMaxIterations)?);
             continue;
         }
-
         if let Some(value) = arg.strip_prefix("--max-iterations=") {
-            config.max_iterations =
-                parse_max_iterations(value).map_err(ConfigError::InvalidMaxIterations)?;
+            max_iterations =
+                Some(parse_max_iterations(value).map_err(ConfigError::InvalidMaxIterations)?);
             continue;
         }
 
         if arg == "--max-board-memory" {
-            let value = args.next().ok_or_else(|| ConfigError::MissingOptionValue {
-                option: arg.clone(),
-                expected: "a memory size like 64MB",
-            })?;
-            config.max_board_memory_bytes =
+            let value = take_value(&mut args, &arg, "a memory size like 64MB")?;
+            max_board_memory_bytes =
                 parse_memory_size(&value).map_err(ConfigError::InvalidMaxBoardMemory)?;
             continue;
         }
-
         if let Some(value) = arg.strip_prefix("--max-board-memory=") {
-            config.max_board_memory_bytes =
+            max_board_memory_bytes =
                 parse_memory_size(value).map_err(ConfigError::InvalidMaxBoardMemory)?;
             continue;
         }
 
-        if arg == "--initial-board" {
-            let value = args.next().ok_or_else(|| ConfigError::MissingOptionValue {
-                option: arg.clone(),
-                expected: "an initial board source like demo, alive, blinker, or random",
-            })?;
-            config.initial_board =
-                InitialBoardSource::parse(&value).map_err(ConfigError::InvalidInitialBoard)?;
+        if arg == "--max-input-file-bytes" {
+            let value = take_value(&mut args, &arg, "a memory size like 256MB")?;
+            max_input_file_bytes =
+                parse_memory_size(&value).map_err(ConfigError::InvalidMaxInputFileBytes)?;
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--max-input-file-bytes=") {
+            max_input_file_bytes =
+                parse_memory_size(value).map_err(ConfigError::InvalidMaxInputFileBytes)?;
             continue;
         }
 
+        if arg == "--initial-board" {
+            let value = take_value(
+                &mut args,
+                &arg,
+                "an initial board source like demo, alive, blinker, or random",
+            )?;
+            initial_board_named =
+                Some(InitialBoardSource::parse(&value).map_err(ConfigError::InvalidInitialBoard)?);
+            continue;
+        }
         if let Some(value) = arg.strip_prefix("--initial-board=") {
-            config.initial_board =
-                InitialBoardSource::parse(value).map_err(ConfigError::InvalidInitialBoard)?;
+            initial_board_named =
+                Some(InitialBoardSource::parse(value).map_err(ConfigError::InvalidInitialBoard)?);
+            continue;
+        }
+
+        if arg == "--load-board" {
+            let value = take_value(&mut args, &arg, "a path to a .gol file")?;
+            load_board_path = Some(PathBuf::from(value));
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--load-board=") {
+            load_board_path = Some(PathBuf::from(value));
+            continue;
+        }
+
+        if arg == "--load-from" {
+            let value = take_value(&mut args, &arg, "'initial' or 'final'")?;
+            load_from = Some(LoadFrom::parse(&value).map_err(ConfigError::InvalidLoadFrom)?);
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--load-from=") {
+            load_from = Some(LoadFrom::parse(value).map_err(ConfigError::InvalidLoadFrom)?);
+            continue;
+        }
+
+        if arg == "--continue" {
+            let value = take_value(&mut args, &arg, "a path to a run record file")?;
+            continue_path = Some(PathBuf::from(value));
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--continue=") {
+            continue_path = Some(PathBuf::from(value));
+            continue;
+        }
+
+        if arg == "--additional-iterations" {
+            let value = take_value(&mut args, &arg, "a non-negative integer like 100")?;
+            additional_iterations =
+                Some(parse_max_iterations(&value).map_err(ConfigError::InvalidMaxIterations)?);
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--additional-iterations=") {
+            additional_iterations =
+                Some(parse_max_iterations(value).map_err(ConfigError::InvalidMaxIterations)?);
+            continue;
+        }
+
+        if arg == "--save-run" {
+            let value = take_value(&mut args, &arg, "an output file path")?;
+            save_run_path = Some(PathBuf::from(value));
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--save-run=") {
+            save_run_path = Some(PathBuf::from(value));
+            continue;
+        }
+
+        if arg == "--runs-dir" {
+            let value = take_value(&mut args, &arg, "a directory path")?;
+            runs_dir = Some(PathBuf::from(value));
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--runs-dir=") {
+            runs_dir = Some(PathBuf::from(value));
+            continue;
+        }
+
+        if arg == "--no-save" {
+            no_save = true;
+            continue;
+        }
+
+        if arg == "--ignore-integrity" {
+            integrity = IntegrityMode::Ignore;
+            continue;
+        }
+
+        if arg == "--replay" {
+            let value = take_value(&mut args, &arg, "a path to a run record file")?;
+            replay_path = Some(PathBuf::from(value));
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--replay=") {
+            replay_path = Some(PathBuf::from(value));
+            continue;
+        }
+
+        if arg == "--extract-board" {
+            let value = take_value(&mut args, &arg, "a path to a run record file")?;
+            extract_board_path = Some(PathBuf::from(value));
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--extract-board=") {
+            extract_board_path = Some(PathBuf::from(value));
+            continue;
+        }
+
+        if arg == "--output" {
+            let value = take_value(&mut args, &arg, "an output file path")?;
+            extract_output_path = Some(PathBuf::from(value));
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--output=") {
+            extract_output_path = Some(PathBuf::from(value));
             continue;
         }
 
         if arg.starts_with('-') {
             return Err(ConfigError::UnknownOption { option: arg });
         }
-
         return Err(ConfigError::UnexpectedArgument { argument: arg });
     }
 
-    Ok(CliCommand::Run(config))
+    // Verb dispatch: --replay and --extract-board are mutually exclusive
+    // verbs that supersede a normal run.
+    if replay_path.is_some() && extract_board_path.is_some() {
+        return Err(ConfigError::ConflictingCommands {
+            details: "--replay and --extract-board cannot be combined; pick one",
+        });
+    }
+
+    if let Some(source) = replay_path {
+        let conflicting = load_board_path.is_some()
+            || continue_path.is_some()
+            || initial_board_named.is_some()
+            || save_run_path.is_some()
+            || runs_dir.is_some()
+            || no_save
+            || additional_iterations.is_some();
+        if conflicting {
+            return Err(ConfigError::ConflictingCommands {
+                details: "--replay is a standalone verb; do not combine with run/load/continue/save options",
+            });
+        }
+        return Ok(CliCommand::Replay(ReplayConfig {
+            source,
+            max_board_memory_bytes,
+            max_input_file_bytes,
+            integrity,
+        }));
+    }
+
+    if let Some(source) = extract_board_path {
+        let output = extract_output_path.ok_or(ConfigError::MissingRequiredOption {
+            option: "--output",
+            context: "required when using --extract-board",
+        })?;
+        let which = load_from.unwrap_or(LoadFrom::Initial);
+        let conflicting = load_board_path.is_some()
+            || continue_path.is_some()
+            || initial_board_named.is_some()
+            || save_run_path.is_some()
+            || runs_dir.is_some()
+            || no_save
+            || additional_iterations.is_some();
+        if conflicting {
+            return Err(ConfigError::ConflictingCommands {
+                details:
+                    "--extract-board is a standalone verb; do not combine with run/load/continue/save options",
+            });
+        }
+        return Ok(CliCommand::ExtractBoard(ExtractBoardConfig {
+            source,
+            which,
+            output,
+            max_board_memory_bytes,
+            max_input_file_bytes,
+            integrity,
+        }));
+    }
+
+    // From here on, it's a Run command. Decide initial-board spec.
+    let mut continue_used = false;
+    let mut warnings: Vec<String> = Vec::new();
+    let initial_board = match (continue_path, load_board_path, initial_board_named) {
+        (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
+            return Err(ConfigError::ConflictingCommands {
+                details: "--continue is mutually exclusive with --load-board and --initial-board",
+            });
+        }
+        (None, Some(path), Some(_)) => {
+            warnings.push(
+                "Warning: --load-board takes precedence; --initial-board ignored.".to_string(),
+            );
+            InitialBoardSpec::LoadFromFile {
+                path,
+                from: load_from,
+            }
+        }
+        (Some(path), None, None) => {
+            continue_used = true;
+            let budget = match (additional_iterations, max_iterations) {
+                (Some(_), Some(_)) => {
+                    return Err(ConfigError::ConflictingCommands {
+                        details:
+                            "--additional-iterations and --max-iterations are mutually exclusive with --continue; pick one (--additional-iterations N means N more steps; --max-iterations M means total chain target M)",
+                    });
+                }
+                (Some(a), None) => ContinuationBudget::Additional(a),
+                (None, Some(m)) => ContinuationBudget::CumulativeMax(m),
+                (None, None) => {
+                    return Err(ConfigError::MissingRequiredOption {
+                        option: "--additional-iterations or --max-iterations",
+                        context:
+                            "required when using --continue (either N more steps, or a cumulative chain target)",
+                    });
+                }
+            };
+            // The cumulative branch consumes --max-iterations into the
+            // continuation budget; clear it so the Run config's
+            // max_iterations slot stays None for replay/honesty.
+            max_iterations = None;
+            InitialBoardSpec::ContinueFromRun { path, budget }
+        }
+        (None, Some(path), None) => InitialBoardSpec::LoadFromFile {
+            path,
+            from: load_from,
+        },
+        (None, None, Some(named)) => InitialBoardSpec::Initializer(named),
+        (None, None, None) => InitialBoardSpec::Initializer(InitialBoardSource::default()),
+    };
+
+    if !continue_used && additional_iterations.is_some() {
+        return Err(ConfigError::ConflictingCommands {
+            details: "--additional-iterations is only valid together with --continue",
+        });
+    }
+    if load_from.is_some() && !matches!(initial_board, InitialBoardSpec::LoadFromFile { .. }) {
+        return Err(ConfigError::ConflictingCommands {
+            details: "--load-from is only valid together with --load-board",
+        });
+    }
+
+    // Save settings.
+    let save = match (no_save, save_run_path, runs_dir) {
+        (true, _, _) => SaveSettings::Suppressed,
+        (false, Some(path), _) => SaveSettings::ExplicitFile(path),
+        (false, None, Some(dir)) => SaveSettings::AutoIntoDir(dir),
+        (false, None, None) => SaveSettings::AutoIntoDir(PathBuf::from(DEFAULT_RUNS_DIR)),
+    };
+
+    Ok(CliCommand::Run(SimulationConfig {
+        board_size,
+        max_iterations,
+        max_board_memory_bytes,
+        initial_board,
+        save,
+        integrity,
+        max_input_file_bytes,
+        warnings,
+    }))
 }
 
 pub fn parse_max_iterations(value: &str) -> Result<usize, IterationParseError> {
@@ -400,51 +761,6 @@ pub fn parse_memory_size(value: &str) -> Result<usize, MemorySizeParseError> {
     Ok(bytes as usize)
 }
 
-fn parse_dimension(
-    original_value: &str,
-    dimension: &'static str,
-    component: &str,
-) -> Result<usize, BoardSizeParseError> {
-    let trimmed = component.trim();
-    if trimmed.is_empty() {
-        return Err(BoardSizeParseError::MissingDimension {
-            value: original_value.to_string(),
-            dimension,
-        });
-    }
-    if trimmed.starts_with('-') {
-        return Err(BoardSizeParseError::NegativeDimension {
-            value: original_value.to_string(),
-            dimension,
-            component: component.to_string(),
-        });
-    }
-    if !trimmed.chars().all(|ch| ch.is_ascii_digit()) {
-        return Err(BoardSizeParseError::NonIntegerDimension {
-            value: original_value.to_string(),
-            dimension,
-            component: component.to_string(),
-        });
-    }
-
-    let parsed = trimmed
-        .parse::<u128>()
-        .map_err(|_| BoardSizeParseError::DimensionTooLarge {
-            value: original_value.to_string(),
-            dimension,
-            component: component.to_string(),
-        })?;
-    if parsed > usize::MAX as u128 {
-        return Err(BoardSizeParseError::DimensionTooLarge {
-            value: original_value.to_string(),
-            dimension,
-            component: component.to_string(),
-        });
-    }
-
-    Ok(parsed as usize)
-}
-
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -466,65 +782,48 @@ impl fmt::Display for ConfigError {
             ConfigError::InvalidBoardSize(error) => write!(f, "{error}"),
             ConfigError::InvalidMaxIterations(error) => write!(f, "{error}"),
             ConfigError::InvalidMaxBoardMemory(error) => write!(f, "{error}"),
+            ConfigError::InvalidMaxInputFileBytes(error) => {
+                write!(
+                    f,
+                    "Option '--max-input-file-bytes' rejected the supplied value: "
+                )?;
+                match error {
+                    MemorySizeParseError::Empty => write!(
+                        f,
+                        "value is empty; use a positive memory size like 256MB."
+                    ),
+                    MemorySizeParseError::Negative { value } => write!(
+                        f,
+                        "value '{value}' is negative; use a positive memory size like 256MB."
+                    ),
+                    MemorySizeParseError::NonInteger { value } => write!(
+                        f,
+                        "value '{value}' is not a whole-number size; use values like 64KB, 256MB, 1GB, or raw bytes."
+                    ),
+                    MemorySizeParseError::Zero { value } => write!(
+                        f,
+                        "value '{value}' is zero; use a size greater than 0 bytes."
+                    ),
+                    MemorySizeParseError::UnknownUnit { value, unit } => write!(
+                        f,
+                        "value '{value}' uses unsupported unit '{unit}'; supported units are B, KB, MB, and GB."
+                    ),
+                    MemorySizeParseError::TooLarge { value } => write!(
+                        f,
+                        "value '{value}' is too large for this platform."
+                    ),
+                }
+            }
             ConfigError::InvalidInitialBoard(error) => write!(f, "{error}"),
-        }
-    }
-}
-
-impl fmt::Display for BoardSizeParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BoardSizeParseError::MissingSeparator { value } => write!(
-                f,
-                "Board size '{value}' is missing the 'x' separator; use WIDTHxHEIGHT, for example 5x5."
-            ),
-            BoardSizeParseError::MissingDimension { value, dimension } => write!(
-                f,
-                "Board size '{value}' is missing a {dimension}; use WIDTHxHEIGHT, for example 5x5."
-            ),
-            BoardSizeParseError::ExtraDimensions { value } => write!(
-                f,
-                "Board size '{value}' has too many dimensions; only 2D boards are supported right now. Use WIDTHxHEIGHT, for example 5x5."
-            ),
-            BoardSizeParseError::UnsupportedSeparator { value } => write!(
-                f,
-                "Board size '{value}' uses an unsupported separator; use 'x' as in 5x5."
-            ),
-            BoardSizeParseError::NegativeDimension {
-                value,
-                dimension,
-                component,
-            } => write!(
-                f,
-                "Board size '{value}' has a negative {dimension} ('{}'); dimensions must be positive whole numbers.",
-                component.trim()
-            ),
-            BoardSizeParseError::NonIntegerDimension {
-                value,
-                dimension,
-                component,
-            } => write!(
-                f,
-                "Board size '{value}' has a non-integer {dimension} ('{}'); use positive whole numbers like 5x5.",
-                component.trim()
-            ),
-            BoardSizeParseError::ZeroDimension { dimension } => write!(
-                f,
-                "Board size has zero {dimension}; {dimension} must be greater than 0."
-            ),
-            BoardSizeParseError::DimensionTooLarge {
-                value,
-                dimension,
-                component,
-            } => write!(
-                f,
-                "Board size '{value}' has a {dimension} ('{}') that is too large for this platform.",
-                component.trim()
-            ),
-            BoardSizeParseError::BoardTooLarge { width, height } => write!(
-                f,
-                "Board size '{width}x{height}' is too large; width times height exceeds the supported board capacity."
-            ),
+            ConfigError::InvalidLoadFrom(error) => write!(f, "{error}"),
+            ConfigError::ConflictingInitialBoardOptions { details }
+            | ConfigError::ConflictingSaveOptions { details }
+            | ConfigError::ConflictingCommands { details } => {
+                write!(f, "Conflicting options: {details}.")
+            }
+            ConfigError::MissingRequiredOption { option, context } => {
+                write!(f, "Option '{option}' is {context}.")
+            }
         }
     }
 }
@@ -596,8 +895,6 @@ impl fmt::Display for InitialBoardSourceParseError {
 }
 
 impl std::error::Error for ConfigError {}
-
-impl std::error::Error for BoardSizeParseError {}
 
 impl std::error::Error for IterationParseError {}
 

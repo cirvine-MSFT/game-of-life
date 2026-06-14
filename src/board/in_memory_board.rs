@@ -85,10 +85,11 @@ impl InMemoryBoard {
     /// Advances the board by one generation using the default in-place updater.
     ///
     /// After completion, the board contains only Dead and Alive states.
-    pub fn advance_generation(&mut self) {
+    /// Returns the per-generation outcome (births, deaths, alive count).
+    pub fn advance_generation(&mut self) -> crate::stats::AdvanceOutcome {
         InPlaceTransitionalUpdater
             .advance_generation(self)
-            .expect("in-memory board updates are infallible");
+            .expect("in-memory board updates are infallible")
     }
 }
 
