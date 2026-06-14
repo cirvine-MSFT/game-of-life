@@ -892,6 +892,7 @@ version = "0.1.0"
 name = "game-of-life-desktop"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "game-of-life",
  "parking_lot",
  "serde",
