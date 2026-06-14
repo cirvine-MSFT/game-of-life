@@ -13,14 +13,16 @@ pub mod persistence;
 pub mod stats;
 
 pub use algorithms::{
-    BlinkerBoardInitializer, BoardInitializer, BoardUpdater, CenteredBlinkerInitializer,
+    BlinkerBoardInitializer, BoardInitializer, BoardUpdater, CellRule, CenteredBlinkerInitializer,
     DemoBoardInitializer, FullyAliveInitializer, InPlaceTransitionalUpdater,
     RandomBoardInitializer, RandomBoardInitializerError, DEFAULT_ALIVE_CELLS_PER_THOUSAND,
     MAX_ALIVE_CELLS_PER_THOUSAND,
 };
 pub use board::{
-    BoardEditor, BoardSize, BoardSizeParseError, BoardView, CellCoordinate, CellState,
-    InMemoryBoard, InMemoryBoardCreationError, DEFAULT_BOARD_HEIGHT, DEFAULT_BOARD_WIDTH,
+    default_advance_with_rule, derive_chunk_dimensions, BoardEditor, BoardSize,
+    BoardSizeParseError, BoardView, CellCoordinate, CellState, InMemoryBoard,
+    InMemoryBoardCreationError, StreamingBoard, StreamingBoardCreationError, StreamingBoardParams,
+    DEFAULT_BOARD_HEIGHT, DEFAULT_BOARD_WIDTH,
 };
 pub use config::{
     parse_cli_args, parse_memory_size, CliCommand, ConfigError, ContinuationBudget,

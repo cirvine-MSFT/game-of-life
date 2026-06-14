@@ -19,6 +19,7 @@ pub mod magic;
 pub mod parser;
 pub mod run_id;
 pub mod run_record;
+pub mod scratch;
 pub mod timestamps;
 
 pub use board_snapshot::{
