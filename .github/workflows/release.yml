@@ -1,0 +1,414 @@
+name: Release
+
+# Triggered by pushing a `v*` tag (e.g. `v0.2.0`) or manually via
+# workflow_dispatch with an explicit version input. Produces six
+# artifacts attached to a draft GitHub Release; the release notes are
+# drafted by the actions/ai-inference step and the human reviews +
+# clicks Publish.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version without the leading v (e.g. 0.2.0). Required for manual runs.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  models: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  resolve-version:
+    name: Resolve version and sync manifests
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      previous_tag: ${{ steps.compute.outputs.previous_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version + previous tag
+        id: compute
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::version input is required for manual runs"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          PREV_TAG="$(git describe --tags --abbrev=0 --exclude="v${VERSION}" 2>/dev/null || echo "")"
+          echo "previous_tag=${PREV_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "Resolved version: ${VERSION}"
+          echo "Previous tag: ${PREV_TAG}"
+
+      - name: Sync Cargo.toml + tauri.conf.json versions
+        shell: bash
+        env:
+          VERSION: ${{ steps.compute.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Root crate version drives RunRecord's tool_version field
+          # (CARGO_PKG_VERSION), so this rewrite is mandatory or the
+          # binaries would record the stale 0.1.0 forever.
+          sed -i.bak -E "0,/^version = \".*\"/s//version = \"${VERSION}\"/" Cargo.toml
+          rm Cargo.toml.bak
+          sed -i.bak -E "0,/^version = \".*\"/s//version = \"${VERSION}\"/" desktop/Cargo.toml
+          rm desktop/Cargo.toml.bak
+          python3 - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path("desktop/tauri.conf.json")
+          data = json.loads(p.read_text())
+          data["version"] = os.environ["VERSION"]
+          p.write_text(json.dumps(data, indent=2) + "\n")
+          PY
+          echo "--- post-sync manifests ---"
+          grep "^version" Cargo.toml
+          grep "^version" desktop/Cargo.toml
+          grep "version" desktop/tauri.conf.json
+
+      - name: Upload synced manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: bumped-manifests
+          path: |
+            Cargo.toml
+            desktop/Cargo.toml
+            desktop/tauri.conf.json
+
+  build-cli-linux:
+    name: Build CLI (Linux x86_64)
+    runs-on: ubuntu-22.04
+    needs: resolve-version
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download bumped manifests
+        uses: actions/download-artifact@v4
+        with:
+          name: bumped-manifests
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: cargo build --release
+        run: cargo build --release --bin game-of-life
+
+      - name: Rename and stage artifact
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          mkdir -p staging
+          cp target/release/game-of-life "staging/game-of-life-cli-${VERSION}-linux-x86_64"
+
+      - name: Upload CLI Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-linux
+          path: staging/*
+
+  build-cli-windows:
+    name: Build CLI (Windows x86_64)
+    runs-on: windows-latest
+    needs: resolve-version
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download bumped manifests
+        uses: actions/download-artifact@v4
+        with:
+          name: bumped-manifests
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: cargo build --release
+        run: cargo build --release --bin game-of-life
+
+      - name: Rename and stage artifact
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force staging | Out-Null
+          Copy-Item target\release\game-of-life.exe "staging\game-of-life-cli-${env:VERSION}-windows-x86_64.exe"
+
+      - name: Upload CLI Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-windows
+          path: staging/*
+
+  build-desktop-linux:
+    name: Build Desktop (Linux x86_64)
+    runs-on: ubuntu-22.04
+    needs: resolve-version
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download bumped manifests
+        uses: actions/download-artifact@v4
+        with:
+          name: bumped-manifests
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libsoup-3.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            build-essential \
+            pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: desktop/ui/package-lock.json
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0" --locked
+
+      - name: npm ci
+        working-directory: desktop/ui
+        run: npm ci
+
+      - name: tauri build
+        working-directory: desktop
+        run: cargo tauri build
+
+      - name: Stage artifacts
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          mkdir -p staging
+          # Tauri's bundle filenames embed the productName so we glob
+          # and rename to our convention.
+          find desktop/target/release/bundle/appimage -name '*.AppImage' \
+            -exec cp {} "staging/game-of-life-desktop-${VERSION}-linux-x86_64.AppImage" \;
+          find desktop/target/release/bundle/deb -name '*.deb' \
+            -exec cp {} "staging/game-of-life-desktop-${VERSION}-linux-x86_64.deb" \;
+          ls -la staging/
+
+      - name: Upload Desktop Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux
+          path: staging/*
+
+  build-desktop-windows:
+    name: Build Desktop (Windows x86_64)
+    runs-on: windows-latest
+    needs: resolve-version
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download bumped manifests
+        uses: actions/download-artifact@v4
+        with:
+          name: bumped-manifests
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: desktop/ui/package-lock.json
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0" --locked
+
+      - name: npm ci
+        working-directory: desktop/ui
+        run: npm ci
+
+      - name: tauri build
+        working-directory: desktop
+        run: cargo tauri build
+
+      - name: Stage artifacts
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force staging | Out-Null
+          $nsis = Get-ChildItem desktop\target\release\bundle\nsis -Filter '*.exe' -Recurse | Select-Object -First 1
+          $msi = Get-ChildItem desktop\target\release\bundle\msi -Filter '*.msi' -Recurse | Select-Object -First 1
+          Copy-Item $nsis.FullName "staging\game-of-life-desktop-${env:VERSION}-windows-x86_64.exe"
+          Copy-Item $msi.FullName "staging\game-of-life-desktop-${env:VERSION}-windows-x86_64.msi"
+          Get-ChildItem staging
+
+      - name: Upload Desktop Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: staging/*
+
+  publish-release:
+    name: Publish draft release with AI-drafted notes
+    runs-on: ubuntu-22.04
+    needs:
+      - resolve-version
+      - build-cli-linux
+      - build-cli-windows
+      - build-desktop-linux
+      - build-desktop-windows
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Stage release assets
+        run: |
+          mkdir -p release-assets
+          cp artifacts/cli-linux/* release-assets/
+          cp artifacts/cli-windows/* release-assets/
+          cp artifacts/desktop-linux/* release-assets/
+          cp artifacts/desktop-windows/* release-assets/
+          ls -la release-assets/
+
+      - name: Collect git log + diffstat for the release notes prompt
+        id: collect
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+          PREV_TAG: ${{ needs.resolve-version.outputs.previous_tag }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PREV_TAG}" ]]; then
+            RANGE_LOG="$(git log --pretty=format:'- %h %s%n%w(0,4,4)%b' --no-merges -200)"
+            RANGE_STAT="$(git diff --stat 4b825dc642cb6eb9a060e54bf8d69288fbee4904..HEAD 2>/dev/null | head -200)"
+          else
+            RANGE_LOG="$(git log "${PREV_TAG}..HEAD" --pretty=format:'- %h %s%n%w(0,4,4)%b' --no-merges -200)"
+            RANGE_STAT="$(git diff --stat "${PREV_TAG}..HEAD" | head -200)"
+          fi
+          {
+            echo "## Commit log"
+            echo
+            echo "${RANGE_LOG}" | head -c 18000
+            echo
+            echo "## Diffstat"
+            echo
+            echo '```'
+            echo "${RANGE_STAT}" | head -c 4000
+            echo '```'
+          } > release-notes-inputs.txt
+          cp release-notes-inputs.txt release-assets/
+          # Pass through to the next step via environment.
+          {
+            echo "inputs<<EOF"
+            cat release-notes-inputs.txt
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Render release-notes prompt
+        id: prompt
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+          PREV_TAG: ${{ needs.resolve-version.outputs.previous_tag }}
+        run: |
+          set -euo pipefail
+          PROMPT_TEMPLATE="$(cat .github/release-notes-prompt.md)"
+          INPUTS="$(cat release-notes-inputs.txt)"
+          PROMPT="${PROMPT_TEMPLATE//\$\{VERSION\}/${VERSION}}"
+          PROMPT="${PROMPT//\$\{PREV_VERSION\}/${PREV_TAG:-(initial release)}}"
+          PROMPT="${PROMPT//\$\{INPUTS\}/${INPUTS}}"
+          mkdir -p tmp
+          printf '%s' "${PROMPT}" > tmp/release-notes-prompt.txt
+          echo "prompt_file=tmp/release-notes-prompt.txt" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate release notes via GitHub Models
+        id: notes
+        uses: actions/ai-inference@v1
+        with:
+          model: openai/gpt-4o-mini
+          prompt-file: ${{ steps.prompt.outputs.prompt_file }}
+          system-prompt: |
+            You are a release-notes drafter for the game-of-life project. Produce
+            terse, factual GitHub-flavoured Markdown only. No emoji, no marketing
+            language, no invented features.
+          max-tokens: 800
+
+      - name: Validate and write release-notes.md
+        id: notes_file
+        env:
+          NOTES: ${{ steps.notes.outputs.response }}
+        run: |
+          set -euo pipefail
+          mkdir -p tmp
+          printf '%s\n' "${NOTES}" > tmp/release-notes.md
+          if ! grep -q "^## What's new" tmp/release-notes.md \
+            || ! grep -q "^## Downloads" tmp/release-notes.md; then
+            echo "::warning::AI-drafted notes failed schema validation; falling back to auto-generated."
+            echo "schema_ok=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "schema_ok=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Create draft release (with AI notes when valid)
+        if: steps.notes_file.outputs.schema_ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" \
+            --draft \
+            --title "v${VERSION}" \
+            --notes-file tmp/release-notes.md \
+            release-assets/*
+
+      - name: Create draft release (auto-generated fallback notes)
+        if: steps.notes_file.outputs.schema_ok != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" \
+            --draft \
+            --generate-notes \
+            --title "v${VERSION}" \
+            release-assets/*
