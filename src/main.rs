@@ -12,16 +12,19 @@ use std::{env, fs, process};
 
 use game_of_life::persistence::{
     board_grid_hash, extract_board_from_run, read_board_snapshot, read_run_record_with_warnings,
-    write_run_record, BoardSnapshot, BoardSnapshotReadError, ExtractBoardError, ExtractWhich,
-    FileKind, RunId, RunRecord, RunRecordConfig, RunRecordReadError, RunRecordResult,
-    RunRecordWriteError, SCHEMA_VERSION, TOOL_VERSION,
+    write_board_snapshot, write_run_record, write_streaming_board_snapshot, BoardSnapshot,
+    BoardSnapshotReadError, BoardSnapshotWriteError, ExtractBoardError, ExtractWhich, FileKind,
+    RunId, RunRecord, RunRecordConfig, RunRecordReadError, RunRecordResult, RunRecordWriteError,
+    SCHEMA_VERSION, TOOL_VERSION,
 };
-use game_of_life::stats::{AdvanceOutcome, RunStatisticsCollector};
+use game_of_life::stats::{run_statistics::RunStatus, AdvanceOutcome, RunStatisticsCollector};
 use game_of_life::{
-    parse_cli_args, BlinkerBoardInitializer, BoardInitializer, BoardSize, BoardUpdater, CliCommand,
-    DemoBoardInitializer, ExtractBoardConfig, FullyAliveInitializer, InMemoryBoard,
-    InMemoryBoardCreationError, InPlaceTransitionalUpdater, InitialBoardSource, InitialBoardSpec,
-    IntegrityMode, LoadFrom, RandomBoardInitializer, ReplayConfig, SaveSettings, SimulationConfig,
+    parse_cli_args, BlinkerBoardInitializer, BoardEditor, BoardInitializer, BoardSize,
+    BoardUpdater, BoardView, CellCoordinate, CellState, CliCommand, DemoBoardInitializer,
+    ExtractBoardConfig, FullyAliveInitializer, InMemoryBoard, InMemoryBoardCreationError,
+    InPlaceTransitionalUpdater, InitialBoardSource, InitialBoardSpec, IntegrityMode, LoadFrom,
+    RandomBoardInitializer, ReplayConfig, SaveSettings, SimulationConfig, StreamingBoard,
+    StreamingBoardCreationError, StreamingBoardParams,
 };
 
 const HELP_TEXT: &str = concat!(
@@ -44,6 +47,14 @@ const HELP_TEXT: &str = concat!(
     "      --continue <PATH>              Continue a prior run: load its FINAL board as the initial board.\n",
     "      --additional-iterations <N>    With --continue: run N more generations. Mutually exclusive with --max-iterations.\n",
     "                                     (With --continue, --max-iterations M instead targets a cumulative total of M iterations across the chain.)\n",
+    "\n",
+    "Streaming (large boards):\n",
+    "      --working-dir <PATH>           Directory for the streaming scratch file; default OS temp dir.\n",
+    "                                     Only used when the run auto-promotes to streaming mode (board exceeds --max-board-memory\n",
+    "                                     and uses --initial-board, not --load-board or --continue).\n",
+    "      --save-board <PATH>            Save the final board as a standalone snapshot. Works in both in-memory and\n",
+    "                                     streaming modes. In streaming mode this is the primary way to persist the\n",
+    "                                     final state, since run-record save is not yet supported for streaming boards.\n",
     "\n",
     "Save options:\n",
     "      --runs-dir <DIR>               Save run records into this directory; default ./runs.\n",
@@ -122,7 +133,13 @@ fn print_help() {
 #[allow(dead_code)] // some variants are reserved for the streaming-board PR
 enum RunSimulationError {
     BoardCreation(InMemoryBoardCreationError),
+    StreamingBoardCreation(StreamingBoardCreationError),
+    StreamingIo {
+        operation: &'static str,
+        source: game_of_life::persistence::scratch::ScratchFileError,
+    },
     SnapshotRead(BoardSnapshotReadError),
+    SnapshotWrite(BoardSnapshotWriteError),
     RunRecordRead(RunRecordReadError),
     RunRecordWrite(RunRecordWriteError),
     Io {
@@ -145,7 +162,12 @@ impl std::fmt::Display for RunSimulationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RunSimulationError::BoardCreation(e) => write!(f, "{e}"),
+            RunSimulationError::StreamingBoardCreation(e) => write!(f, "{e}"),
+            RunSimulationError::StreamingIo { operation, source } => {
+                write!(f, "Streaming I/O error while {operation}: {source}")
+            }
             RunSimulationError::SnapshotRead(e) => write!(f, "{e}"),
+            RunSimulationError::SnapshotWrite(e) => write!(f, "{e}"),
             RunSimulationError::RunRecordRead(e) => write!(f, "{e}"),
             RunSimulationError::RunRecordWrite(e) => write!(f, "{e}"),
             RunSimulationError::Io {
@@ -183,9 +205,19 @@ impl From<InMemoryBoardCreationError> for RunSimulationError {
         Self::BoardCreation(value)
     }
 }
+impl From<StreamingBoardCreationError> for RunSimulationError {
+    fn from(value: StreamingBoardCreationError) -> Self {
+        Self::StreamingBoardCreation(value)
+    }
+}
 impl From<BoardSnapshotReadError> for RunSimulationError {
     fn from(value: BoardSnapshotReadError) -> Self {
         Self::SnapshotRead(value)
+    }
+}
+impl From<BoardSnapshotWriteError> for RunSimulationError {
+    fn from(value: BoardSnapshotWriteError) -> Self {
+        Self::SnapshotWrite(value)
     }
 }
 impl From<RunRecordReadError> for RunSimulationError {
@@ -204,6 +236,15 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
     // silently overridden by a higher-precedence one).
     for warning in &config.warnings {
         eprintln!("{warning}");
+    }
+
+    // Auto-promote to the streaming backend when an initializer-based run
+    // would exceed --max-board-memory. --load-board / --continue stay on
+    // the in-memory path for v1 (they still allocate the full board on
+    // load); those paths surface the existing memory-budget error if the
+    // file is too big.
+    if should_auto_promote_to_streaming(&config) {
+        return run_streaming_simulation(config);
     }
 
     let initial = resolve_initial_board(&config)?;
@@ -297,7 +338,210 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
         println!("Saved run record: {}", save_path.display());
     }
 
+    if let Some(save_path) = config.save_board_path.as_deref() {
+        let snapshot = BoardSnapshot::for_board(board);
+        write_board_snapshot(save_path, &snapshot)?;
+        println!("Saved final board snapshot: {}", save_path.display());
+    }
+
     Ok(())
+}
+
+/// Decide whether to auto-promote a Run into streaming mode. v1 only
+/// auto-promotes initializer-based runs; --load-board and --continue
+/// keep the existing in-memory failure mode if the board is too big.
+fn should_auto_promote_to_streaming(config: &SimulationConfig) -> bool {
+    if !matches!(&config.initial_board, InitialBoardSpec::Initializer(_)) {
+        return false;
+    }
+    let size = config.effective_board_size();
+    let required = match InMemoryBoard::allocation_bytes(size.width, size.height) {
+        Ok(bytes) => bytes,
+        // Overflow-style failures mean the board is far too big for the
+        // cap; promote.
+        Err(_) => return true,
+    };
+    required > config.max_board_memory_bytes
+}
+
+/// Streaming-backed simulation path. Only supports initializer-based
+/// initial boards in v1 (no --load-board / --continue / run-record save).
+fn run_streaming_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
+    let board_size = config.effective_board_size();
+    let required =
+        InMemoryBoard::allocation_bytes(board_size.width, board_size.height).unwrap_or(usize::MAX);
+    eprintln!(
+        "Note: streaming mode enabled because the board needs {required} bytes but \
+         --max-board-memory is {} bytes.",
+        config.max_board_memory_bytes
+    );
+
+    let run_id = RunId::generate();
+    let random_seed = generate_random_seed();
+    let run_id_hint = format!("{run_id}");
+    let chunk_rows_override = None;
+    let chunk_cols_override = None;
+    let mut board = StreamingBoard::new(StreamingBoardParams {
+        width: board_size.width,
+        height: board_size.height,
+        max_board_memory_bytes: config.max_board_memory_bytes,
+        working_dir: config.working_dir.as_deref(),
+        scratch_name_hint: &run_id_hint,
+        chunk_rows_override,
+        chunk_cols_override,
+    })?;
+    let scratch_path = board.scratch_path().to_path_buf();
+    let (target_rows, target_cols) = board.target_owned_chunk();
+    eprintln!(
+        "Note: streaming chunk dimensions: {target_rows}x{target_cols} owned cells \
+         ({}); scratch file: {}",
+        if board.is_row_band_fast_path() {
+            "row-band fast path"
+        } else {
+            "general 2D path"
+        },
+        scratch_path.display()
+    );
+
+    // Seed via initializer (the only InitialBoardSpec variant supported in
+    // streaming mode for v1).
+    match &config.initial_board {
+        InitialBoardSpec::Initializer(source) => {
+            seed_streaming_with_initializer(*source, &mut board, random_seed)?;
+            board.flush().map_err(|e| RunSimulationError::StreamingIo {
+                operation: "flushing initial board to scratch",
+                source: e,
+            })?;
+        }
+        _ => unreachable!("should_auto_promote_to_streaming gates this branch"),
+    }
+
+    let initial_alive_count = count_alive_streaming(&mut board)?;
+    let max_iterations = config.effective_max_iterations();
+    let updater = InPlaceTransitionalUpdater;
+    let mut collector = RunStatisticsCollector::starting_from(initial_alive_count);
+    let mut early_stop_extinct = initial_alive_count == 0;
+    let started = Instant::now();
+    for _ in 0..max_iterations {
+        if early_stop_extinct {
+            break;
+        }
+        let outcome: AdvanceOutcome =
+            board
+                .advance_with_rule(&updater)
+                .map_err(|e| RunSimulationError::StreamingIo {
+                    operation: "advancing streaming board generation",
+                    source: e,
+                })?;
+        collector.record(outcome);
+        if outcome.alive_count == 0 {
+            early_stop_extinct = true;
+        }
+    }
+    let wall_time_ms = started.elapsed().as_millis() as u64;
+    let status = if early_stop_extinct {
+        RunStatus::Extinct
+    } else {
+        RunStatus::MaxIterations
+    };
+    let stats = collector.finalize(status);
+
+    println!("Game of Life (streaming mode)");
+    println!("Board size: {board_size}");
+    println!("Max iterations: {max_iterations}");
+    println!("Max board memory: {} bytes", config.max_board_memory_bytes);
+    println!(
+        "Streaming chunk: {target_rows}x{target_cols} owned cells ({})",
+        if board.is_row_band_fast_path() {
+            "row-band fast path"
+        } else {
+            "general 2D path"
+        }
+    );
+    println!("Initial board: {}", config.initial_board.record_label());
+    println!(
+        "Generation 0: '{}' initial board seeded ({} alive)",
+        config.initial_board.record_label(),
+        initial_alive_count
+    );
+    println!(
+        "Simulation complete: {} iterations ({})",
+        stats.iterations_run,
+        stats.status.as_str()
+    );
+
+    // Run-record save is not yet supported for streaming-sized boards;
+    // warn instead of failing so the run still produces visible output.
+    if matches!(
+        &config.save,
+        SaveSettings::ExplicitFile(_) | SaveSettings::AutoIntoDir(_)
+    ) {
+        eprintln!(
+            "Note: run-record save is not yet supported for streaming-sized boards. \
+             Use --save-board <PATH> to save the final board as a standalone snapshot, \
+             or raise --max-board-memory enough to keep the board in memory. \
+             Wall time: {wall_time_ms} ms."
+        );
+    }
+
+    if let Some(save_path) = config.save_board_path.as_deref() {
+        write_streaming_board_snapshot(save_path, &mut board)?;
+        println!("Saved final board snapshot: {}", save_path.display());
+    }
+
+    // Lifecycle: explicit flush + delete on success. On error, the
+    // scratch file stays on disk (see plan: failures preserve scratch
+    // files for debugging).
+    board.flush().map_err(|e| RunSimulationError::StreamingIo {
+        operation: "flushing scratch file before cleanup",
+        source: e,
+    })?;
+    drop(board);
+    if let Err(e) = fs::remove_file(&scratch_path) {
+        eprintln!(
+            "Warning: failed to delete scratch file '{}': {e}",
+            scratch_path.display()
+        );
+    }
+
+    Ok(())
+}
+
+fn seed_streaming_with_initializer(
+    source: InitialBoardSource,
+    board: &mut StreamingBoard,
+    seed: u64,
+) -> Result<(), RunSimulationError> {
+    let result = match source {
+        InitialBoardSource::Demo => DemoBoardInitializer.initialize(board),
+        InitialBoardSource::Alive => FullyAliveInitializer.initialize(board),
+        InitialBoardSource::Blinker => BlinkerBoardInitializer.initialize(board),
+        InitialBoardSource::Random => RandomBoardInitializer::new(seed).initialize(board),
+    };
+    result.map_err(|e| RunSimulationError::StreamingIo {
+        operation: "seeding initial board into scratch",
+        source: e,
+    })
+}
+
+fn count_alive_streaming(board: &mut StreamingBoard) -> Result<u64, RunSimulationError> {
+    let mut alive = 0u64;
+    let width = board.width();
+    let height = board.height();
+    for y in 0..height {
+        for x in 0..width {
+            let state = board.peek_cell(CellCoordinate::new(x, y)).map_err(|e| {
+                RunSimulationError::StreamingIo {
+                    operation: "counting alive cells",
+                    source: e,
+                }
+            })?;
+            if matches!(state, CellState::Alive) {
+                alive += 1;
+            }
+        }
+    }
+    Ok(alive)
 }
 
 struct ResolvedInitial {
