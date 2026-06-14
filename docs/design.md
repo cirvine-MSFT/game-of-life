@@ -469,6 +469,23 @@ Future work should be guided by the customer lens in [../CUSTOMERS.md](../CUSTOM
 - [Conway's Game of Life - Wikipedia](https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life)
 - [Patterns and behaviors](https://www.conwaylife.com/)
 
-## Architecture Diagram
+## Architecture Diagrams
 
-The editable architecture diagram is maintained in [architecture.excalidraw](architecture.excalidraw). A static PNG export is linked from the repository README for easier Markdown viewing.
+Four Excalidraw diagrams document the system, all in `docs/`:
+
+- [`architecture.excalidraw`](architecture.excalidraw) — high-level overview
+  (algorithm pattern, board storage, runtime wiring). Also exported as
+  `architecture.png` and linked from the repository README.
+- [`streaming-architecture.excalidraw`](streaming-architecture.excalidraw)
+  — the StreamingBoard, owned-vs-loaded chunk rectangles, GOL-SCRATCH
+  file layout, and lifecycle.
+- [`persistence-architecture.excalidraw`](persistence-architecture.excalidraw)
+  — board snapshot vs run record file kinds, the shared read pipeline
+  (sniff → size guard → parser → content_hash check), and CLI verbs.
+- [`board-memory-architecture.excalidraw`](board-memory-architecture.excalidraw)
+  — `--max-board-memory` enforcement, the three allocation outcomes,
+  and `--initial-board` source routing into the four built-in seeders.
+
+Edit these in the Microsoft internal Excalidraw instance
+(https://aka.ms/excalidraw). The streaming, persistence, and
+board-memory diagrams are referenced inline from this design document.
