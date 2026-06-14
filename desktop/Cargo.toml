@@ -1,0 +1,48 @@
+# Independent workspace root. Declaring [workspace] here prevents cargo's
+# upward search from associating this crate with the root game-of-life
+# package, which keeps both Cargo.lock files isolated. The user is actively
+# evolving the core library; pulling Tauri's ~300 transitive crates into the
+# root lockfile would generate constant merge conflicts.
+[workspace]
+members = ["."]
+
+[package]
+name = "game-of-life-desktop"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Visualizer desktop app for Conway's Game of Life."
+publish = false
+
+[lib]
+name = "game_of_life_desktop_lib"
+# cdylib for mobile parity later; staticlib for the desktop binary link.
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "game-of-life-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.6", features = [] }
+
+[dependencies]
+game-of-life = { path = ".." }
+tauri = { version = "2.11", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+thiserror = "2"
+parking_lot = "0.12"
+
+[features]
+# Custom protocol is needed for asset loading in bundled builds.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
