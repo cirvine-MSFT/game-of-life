@@ -568,7 +568,9 @@ where
             || save_run_path.is_some()
             || runs_dir.is_some()
             || no_save
-            || additional_iterations.is_some();
+            || additional_iterations.is_some()
+            || working_dir.is_some()
+            || save_board_path.is_some();
         if conflicting {
             return Err(ConfigError::ConflictingCommands {
                 details: "--replay is a standalone verb; do not combine with run/load/continue/save options",
@@ -594,7 +596,9 @@ where
             || save_run_path.is_some()
             || runs_dir.is_some()
             || no_save
-            || additional_iterations.is_some();
+            || additional_iterations.is_some()
+            || working_dir.is_some()
+            || save_board_path.is_some();
         if conflicting {
             return Err(ConfigError::ConflictingCommands {
                 details:

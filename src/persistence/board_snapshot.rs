@@ -520,6 +520,15 @@ pub fn write_streaming_board_snapshot(
 /// produce for the equivalent in-memory board — same magic header, same
 /// `size` / `encoding` / `alive_count` / `dead_count` fields, same
 /// `#`/`.` grid, same fences.
+///
+/// **Cost**: two full scans over the board via `peek_cell` — one to
+/// total `alive_count` so the header can be emitted before the grid,
+/// one to write the grid. A seek-and-patch single-pass variant would
+/// halve the scratch I/O, but only at the cost of writing fixed-width
+/// zero-padded count fields (e.g. `alive_count: 00000000000000000004`),
+/// which would diverge from the hand-edit-friendly in-memory writer's
+/// output format. The byte-identical contract is worth one extra scan;
+/// I/O efficiency is a deferred follow-up.
 pub fn write_streaming_board_snapshot_to<W: Write>(
     writer: &mut W,
     board: &mut StreamingBoard,
@@ -531,10 +540,6 @@ pub fn write_streaming_board_snapshot_to<W: Write>(
 
     let width = board.width();
     let height = board.height();
-    // We have to emit alive_count / dead_count BEFORE the grid, so we
-    // pre-scan once via peek_cell to total live cells, then emit the
-    // header, then re-scan for the grid. peek_cell does the slide
-    // bookkeeping but stays within one chunk's working set.
     let mut alive_count: u64 = 0;
     for y in 0..height {
         for x in 0..width {
@@ -557,9 +562,6 @@ pub fn write_streaming_board_snapshot_to<W: Write>(
     writeln!(writer, "alive_count: {alive_count}")?;
     writeln!(writer, "dead_count: {dead_count}")?;
 
-    // Stream the grid one row at a time. peek_cell may slide the chunk
-    // between rows; that's fine because each row is independent at the
-    // file level.
     let mut row_buf = Vec::with_capacity(width + 1);
     for y in 0..height {
         row_buf.clear();

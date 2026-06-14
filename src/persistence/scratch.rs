@@ -344,24 +344,20 @@ impl ScratchFile {
     }
 
     fn zero_initialize_payload(&mut self) -> io::Result<()> {
-        // Total payload bytes = height * row_bytes. Write in chunks of
-        // 64 KiB so we don't allocate a multi-GB zero buffer for huge
-        // boards.
+        // The payload region is conceptually all-Dead (encoded as 00 bits).
+        // Use `set_len` rather than explicitly writing zeros: both POSIX
+        // (`ftruncate`) and Windows (NTFS extend with zero-valued bytes)
+        // give the same observable read behavior — every cell reads as
+        // Dead — but `set_len` returns in microseconds whereas writing
+        // `height × row_bytes` zeros for a streaming-sized board (often
+        // multi-GB) is a multi-second-to-minute startup hang. Sparse hole
+        // allocation also avoids unnecessarily consuming disk space until
+        // a cell is actually written.
         let total = self.height * self.row_bytes;
         if total == 0 {
             return Ok(());
         }
-        const CHUNK_BYTES: u64 = 64 * 1024;
-        let zeros = vec![0u8; CHUNK_BYTES as usize];
-        self.file.seek(SeekFrom::Start(HEADER_SIZE))?;
-        let mut written = 0u64;
-        while written < total {
-            let remaining = total - written;
-            let to_write = remaining.min(CHUNK_BYTES) as usize;
-            self.file.write_all(&zeros[..to_write])?;
-            written += to_write as u64;
-        }
-        self.file.flush()?;
+        self.file.set_len(HEADER_SIZE + total)?;
         Ok(())
     }
 

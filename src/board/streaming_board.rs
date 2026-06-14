@@ -45,7 +45,6 @@
 //! — enough RAM to hold the minimum 3×3 loaded chunk plus dirty row
 //! tracking. Below that we error out with a suggested override.
 
-use std::convert::Infallible;
 use std::fmt;
 use std::mem;
 use std::path::{Path, PathBuf};
@@ -550,18 +549,26 @@ fn derive_2d_chunk(
     (owned_rows, owned_cols)
 }
 
-/// Generate a short suffix unique enough to disambiguate concurrent
-/// scratch files in the same working dir. Uses a hash of the current
-/// time + the process id, hex-encoded.
+/// Generate a short suffix that is *guaranteed unique within this process*
+/// (via a monotonic counter) and very likely unique across processes
+/// (via time + pid mixing). The counter is the safety net: on platforms
+/// with coarse `SystemTime` resolution, back-to-back calls in a tight
+/// loop can otherwise return identical timestamps and collide.
 fn unique_suffix() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
     let pid = std::process::id() as u64;
-    let mixed = nanos.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(pid);
-    format!("{:016x}", mixed)
+    let mixed = nanos
+        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        .wrapping_add(pid)
+        .wrapping_add(counter);
+    format!("{mixed:016x}")
 }
 
 impl BoardView for StreamingBoard {
@@ -783,13 +790,6 @@ impl Drop for StreamingBoard {
         let _ = self.flush_dirty_rows();
     }
 }
-
-// Convenience aliases so callers don't have to pattern-match for
-// `Infallible` when interacting with the legacy `InMemoryBoard`-only
-// code paths. Currently unused; left as a placeholder for symmetry
-// with `InMemoryBoard`'s `type Error = Infallible`.
-#[allow(dead_code)]
-type _StreamingInfallibleAlias = Infallible;
 
 #[cfg(test)]
 mod tests {

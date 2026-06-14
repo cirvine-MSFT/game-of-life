@@ -400,4 +400,41 @@ mod streaming_tests {
             "the run-record path should not have been created"
         );
     }
+
+    #[test]
+    fn negative_save_board_with_replay_is_rejected() {
+        // --save-board doesn't fit the --replay verb's semantics. Without
+        // this conflict check the parser would silently drop the flag and
+        // the user would never know — make the rejection explicit.
+        let output = run_cli(&[
+            "--replay",
+            "some-path.gol",
+            "--save-board",
+            "should-error.gol-snapshot",
+        ]);
+        assert!(!output.status.success(), "should reject the combination");
+        let stderr = stderr(&output);
+        assert!(
+            stderr.contains("--replay is a standalone verb"),
+            "stderr should explain the conflict: {stderr}"
+        );
+    }
+
+    #[test]
+    fn negative_working_dir_with_extract_board_is_rejected() {
+        let output = run_cli(&[
+            "--extract-board",
+            "some-record.gol",
+            "--output",
+            "out.gol-snapshot",
+            "--working-dir",
+            "/tmp",
+        ]);
+        assert!(!output.status.success(), "should reject the combination");
+        let stderr = stderr(&output);
+        assert!(
+            stderr.contains("--extract-board is a standalone verb"),
+            "stderr should explain the conflict: {stderr}"
+        );
+    }
 }
