@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Body1, Caption1, makeStyles, tokens } from "@fluentui/react-components";
+import { Body1, Button, Caption1, makeStyles, tokens } from "@fluentui/react-components";
 
 import { BoardCanvas } from "./BoardCanvas";
 import { PlaybackControls } from "./PlaybackControls";
@@ -36,6 +36,14 @@ const useStyles = makeStyles({
     borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
   },
   initError: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100%",
+    gap: tokens.spacingVerticalM,
+    padding: tokens.spacingHorizontalXL,
+    textAlign: "center",
     color: tokens.colorPaletteRedForeground1,
   },
 });
@@ -73,9 +81,13 @@ export const Shell = () => {
   if (initError) {
     return (
       <div className={styles.root}>
-        <Body1 className={styles.initError}>
-          Failed to connect to the simulation backend: {initError}
-        </Body1>
+        <div className={styles.initError}>
+          <Body1>Failed to connect to the simulation backend.</Body1>
+          <Body1>{initError}</Body1>
+          <Button appearance="primary" onClick={() => void connect()}>
+            Retry
+          </Button>
+        </div>
       </div>
     );
   }

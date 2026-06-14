@@ -168,6 +168,74 @@ impl RunSession {
         self.lock().final_stats.as_ref().map(IpcRunStatistics::from)
     }
 
+    /// Cooperative stop: sets the cancel flag and spin-waits up to ~1s
+    /// for any in-flight `play` / `jump_to` worker to acknowledge by
+    /// transitioning the session back to `Paused`. Called by mutators
+    /// (`restart`, `edit_board`, `create_run`) so they never race the
+    /// worker for the lock and then have their state-reset trampled by
+    /// the next `advance_one`.
+    fn stop_worker_and_wait(&self) {
+        let running = matches!(self.lock().mode, Mode::Playing | Mode::JumpingTo);
+        if !running {
+            return;
+        }
+        self.cancel.store(true, Ordering::SeqCst);
+        for _ in 0..200 {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            if matches!(self.lock().mode, Mode::Paused | Mode::Setup) {
+                return;
+            }
+        }
+        // Worker didn't acknowledge within 1s. Force the mode anyway;
+        // the worker will exit on its next iteration and find its
+        // mutations already overwritten, which is recoverable.
+        self.lock().mode = Mode::Paused;
+    }
+
+    /// Atomic Setup -> Setup (no-op) or Paused -> Playing transition
+    /// used by the `play` command. Returns the previous mode if it
+    /// would have been rejected so the command can error out without
+    /// a second lock round-trip. Closes the TOCTOU window where two
+    /// concurrent `play` invocations could both see `Paused` and
+    /// each spawn a worker.
+    pub fn begin_playing(&self) -> Result<(), SessionError> {
+        let mut data = self.lock();
+        if !matches!(data.mode, Mode::Paused) {
+            return Err(SessionError::WrongMode {
+                current: data.mode,
+                required: "Paused",
+            });
+        }
+        if data.final_stats.is_some() {
+            return Err(SessionError::RunCompleted);
+        }
+        data.mode = Mode::Playing;
+        drop(data);
+        self.cancel.store(false, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Atomic Paused -> JumpingTo transition with the same race-closing
+    /// rationale as `begin_playing`. Caller is responsible for the
+    /// (optional) backward restart before spawning the worker.
+    pub fn begin_jumping(&self, target: u64) -> Result<(), SessionError> {
+        let mut data = self.lock();
+        if !matches!(data.mode, Mode::Paused) {
+            return Err(SessionError::WrongMode {
+                current: data.mode,
+                required: "Paused",
+            });
+        }
+        if data.final_stats.is_some() && target > data.iteration {
+            return Err(SessionError::RunCompleted);
+        }
+        data.mode = Mode::JumpingTo;
+        data.jump_target = Some(target);
+        drop(data);
+        self.cancel.store(false, Ordering::SeqCst);
+        Ok(())
+    }
+
     /// Sets up a fresh run in Setup mode. Discards any prior in-flight run.
     /// Memory budget defaults to `DEFAULT_MAX_BOARD_MEMORY_BYTES` when
     /// `max_memory_bytes` is `None`.
@@ -200,6 +268,10 @@ impl RunSession {
                     .expect("InMemoryBoard editor is infallible");
             }
         }
+
+        // Stop any in-flight worker BEFORE we mutate session state so
+        // the new board doesn't get trampled by a stale advance.
+        self.stop_worker_and_wait();
 
         let mut data = self.lock();
         data.mode = Mode::Setup;
@@ -326,15 +398,19 @@ impl RunSession {
     }
 
     /// Restores the board to its initial snapshot, resets iteration and
-    /// stats history. Caller must be in a Running mode.
+    /// stats history. Caller must be in a Running mode. If a play /
+    /// jump worker is in flight it is cancelled and awaited before the
+    /// rewind happens, so the worker can't trample the restored state
+    /// with a stale `advance_one`.
     pub fn restart(&self) -> Result<(), SessionError> {
-        let mut data = self.lock();
-        if !matches!(data.mode, Mode::Paused | Mode::Playing | Mode::JumpingTo) {
+        if !matches!(self.lock().mode, Mode::Paused | Mode::Playing | Mode::JumpingTo) {
             return Err(SessionError::WrongMode {
-                current: data.mode,
+                current: self.lock().mode,
                 required: "Running",
             });
         }
+        self.stop_worker_and_wait();
+        let mut data = self.lock();
         let snapshot = data
             .initial_snapshot
             .clone()
@@ -348,17 +424,18 @@ impl RunSession {
         data.final_stats = None;
         data.mode = Mode::Paused;
         data.jump_target = None;
-        self.cancel.store(false, Ordering::SeqCst);
         Ok(())
     }
 
     /// Exits Running mode back into Setup, dropping the run record but
-    /// keeping the current board (so the user can keep painting).
+    /// keeping the current board (so the user can keep painting). Any
+    /// in-flight worker is stopped and awaited first.
     pub fn edit_board(&self) -> Result<(), SessionError> {
-        let mut data = self.lock();
-        if matches!(data.mode, Mode::Setup) {
+        if matches!(self.lock().mode, Mode::Setup) {
             return Ok(());
         }
+        self.stop_worker_and_wait();
+        let mut data = self.lock();
         data.mode = Mode::Setup;
         data.initial_snapshot = None;
         data.iteration = 0;
@@ -366,27 +443,38 @@ impl RunSession {
         data.stats = None;
         data.final_stats = None;
         data.jump_target = None;
-        self.cancel.store(false, Ordering::SeqCst);
         Ok(())
     }
 
     /// Raises `max_iterations`. Useful for Run-to-N where the user wants
-    /// the simulation to keep going past its original cap.
+    /// the simulation to keep going past its original cap. If the run
+    /// had already terminated via `MaxIterations`, the stats collector
+    /// is rehydrated from the last alive count so subsequent advances
+    /// continue accumulating into the same series instead of looping
+    /// forever past the cap (the play worker breaks on
+    /// `info().completed`, which would otherwise stay false because
+    /// `advance_one` couldn't finalise without a live collector).
     pub fn extend_max_iterations(&self, new_total: u64) -> Result<(), SessionError> {
         let mut data = self.lock();
         if new_total < data.iteration {
             return Err(SessionError::InvalidMaxIterations { new_total });
         }
         data.max_iterations = new_total;
-        // Re-opening room past the cap removes any prior terminal state.
-        if data
+        let was_at_max = data
             .final_stats
             .as_ref()
             .map(|s| matches!(s.status, RunStatus::MaxIterations))
-            .unwrap_or(false)
-            && new_total > data.iteration
-        {
+            .unwrap_or(false);
+        if was_at_max && new_total > data.iteration {
             data.final_stats = None;
+            if data.stats.is_none() {
+                let last_alive = data
+                    .alive_history
+                    .last()
+                    .copied()
+                    .unwrap_or(0);
+                data.stats = Some(RunStatisticsCollector::starting_from(last_alive));
+            }
         }
         Ok(())
     }

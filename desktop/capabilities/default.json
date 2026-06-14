@@ -1,15 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capabilities for the main visualizer window. Grants the core IPC + event surface so the React frontend can call our custom #[tauri::command] functions and subscribe to gol://* events. Filesystem and dialog permissions land with the file-ops todo.",
+  "description": "Capabilities for the main visualizer window. Grants the minimum core IPC + event-listen surface so the React frontend can call our custom #[tauri::command] functions and subscribe to gol://* events. Emit permission is deliberately NOT granted — only the Rust side ever emits, so opening that hole would let any future XSS spoof board-tick/session-changed events and silently overwrite client state. Filesystem and dialog permissions land with the file-ops todo.",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "core:event:default",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
-    "core:event:allow-emit",
-    "core:event:allow-emit-to",
     "core:window:default",
     "core:webview:default",
     "core:app:default",

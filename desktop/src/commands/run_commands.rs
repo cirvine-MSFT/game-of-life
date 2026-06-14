@@ -49,11 +49,24 @@ pub fn extend_max_iterations(
 }
 
 /// Advance exactly one generation. Used by the "Step" toolbar button.
+/// Rejects unless the session is in Paused mode so the step cannot
+/// race a play/jump worker and corrupt iteration order. The frontend
+/// also disables the button outside Paused, but the IPC layer is the
+/// last line of defense in case the UI is bypassed.
 #[tauri::command]
 pub fn step(
     app: AppHandle,
     session: State<'_, Arc<RunSession>>,
 ) -> Result<(), SessionError> {
+    {
+        let info = session.info();
+        if !matches!(info.mode, Mode::Paused) {
+            return Err(SessionError::WrongMode {
+                current: info.mode,
+                required: "Paused",
+            });
+        }
+    }
     let cloned = session.inner().clone();
     let tick = cloned.advance_one()?;
     let board = cloned.board_payload();
@@ -74,23 +87,18 @@ pub fn pause(session: State<'_, Arc<RunSession>>) {
 ///
 /// `gps` is clamped to `MIN_GPS..=MAX_GPS`. The first iteration runs
 /// immediately so the user gets visual feedback even at slow rates.
+///
+/// Uses `begin_playing()` so the mode-check and the transition happen
+/// under one lock — closes the TOCTOU race where two concurrent
+/// `play` invocations could both observe `Paused` and each spawn a
+/// worker.
 #[tauri::command]
 pub async fn play(
     app: AppHandle,
     session: State<'_, Arc<RunSession>>,
     gps: u16,
 ) -> Result<(), SessionError> {
-    {
-        let info = session.info();
-        if !matches!(info.mode, Mode::Paused) {
-            return Err(SessionError::WrongMode {
-                current: info.mode,
-                required: "Paused",
-            });
-        }
-    }
-    session.clear_cancel();
-    session.set_mode(Mode::Playing);
+    session.begin_playing()?;
     let _ = app.emit(SESSION_CHANGED, session.info());
 
     let cloned = session.inner().clone();
@@ -104,34 +112,22 @@ pub async fn play(
 /// Advances toward `target_iteration`. Forward targets `> current` run
 /// the simulation; backward targets `< current` restart and replay from
 /// generation 0. Progress emits every `JUMP_PROGRESS_INTERVAL`.
+///
+/// Uses `begin_jumping()` for the atomic Paused -> JumpingTo transition.
 #[tauri::command]
 pub async fn jump_to(
     app: AppHandle,
     session: State<'_, Arc<RunSession>>,
     target_iteration: u64,
 ) -> Result<(), SessionError> {
-    {
-        let info = session.info();
-        if !matches!(info.mode, Mode::Paused) {
-            return Err(SessionError::WrongMode {
-                current: info.mode,
-                required: "Paused",
-            });
-        }
-        if info.completed && target_iteration > info.iteration {
-            return Err(SessionError::RunCompleted);
-        }
-    }
-
-    session.clear_cancel();
     let current = session.info().iteration;
     if target_iteration < current {
-        // Replays from the initial snapshot. `restart` resets iteration
-        // to 0, then we forward to the target.
+        // `restart` itself stops any (impossible-here) worker and
+        // resets to iter 0. Mode is Paused after this so the
+        // subsequent `begin_jumping` succeeds.
         session.restart()?;
     }
-    session.set_mode(Mode::JumpingTo);
-    session.set_jump_target(Some(target_iteration));
+    session.begin_jumping(target_iteration)?;
     let _ = app.emit(SESSION_CHANGED, session.info());
 
     let cloned = session.inner().clone();
@@ -184,6 +180,7 @@ async fn run_play_loop(app: AppHandle, session: Arc<RunSession>, gps: u16) {
 
 async fn run_jump_loop(app: AppHandle, session: Arc<RunSession>, target: u64) {
     let mut last_progress = Instant::now();
+    let mut last_emitted: Option<crate::ipc_types::AdvanceTick> = None;
     loop {
         let current = session.info().iteration;
         if current >= target {
@@ -192,9 +189,11 @@ async fn run_jump_loop(app: AppHandle, session: Arc<RunSession>, target: u64) {
         if session.cancel_requested() {
             break;
         }
-        if session.advance_one().is_err() {
-            break;
-        }
+        let tick = match session.advance_one() {
+            Ok(t) => t,
+            Err(_) => break,
+        };
+        last_emitted = Some(tick);
         // Yield periodically so other tokio tasks (including the IPC
         // request that fired this jump) can progress.
         if last_progress.elapsed() >= JUMP_PROGRESS_INTERVAL {
@@ -210,16 +209,14 @@ async fn run_jump_loop(app: AppHandle, session: Arc<RunSession>, target: u64) {
         }
     }
 
-    // Final tick so the canvas reflects the new state.
-    let board = session.board_payload();
-    let stats = crate::ipc_types::AdvanceTick {
-        iteration: session.info().iteration,
-        alive: count_alive_in(&board),
-        dead: 0,
-        births: 0,
-        deaths: 0,
-    };
-    let _ = app.emit(BOARD_TICK, BoardTick { stats, board });
+    // One final BOARD_TICK reflecting the *real* last advance — gives
+    // the canvas a chance to re-render the post-jump board even when
+    // we threw the last in-loop tick away (only progress events were
+    // emitted at high jump rates). Skip if we never advanced.
+    if let Some(stats) = last_emitted {
+        let board = session.board_payload();
+        let _ = app.emit(BOARD_TICK, BoardTick { stats, board });
+    }
 
     emit_completion_if_done(&app, &session);
 
@@ -227,13 +224,6 @@ async fn run_jump_loop(app: AppHandle, session: Arc<RunSession>, target: u64) {
     session.set_jump_target(None);
     session.set_mode(Mode::Paused);
     let _ = app.emit(SESSION_CHANGED, session.info());
-}
-
-fn count_alive_in(board: &crate::ipc_types::BoardPayload) -> u64 {
-    board
-        .decoded_cells()
-        .map(|cells| cells.iter().filter(|&&c| c != 0).count() as u64)
-        .unwrap_or(0)
 }
 
 fn emit_completion_if_done(app: &AppHandle, session: &Arc<RunSession>) {

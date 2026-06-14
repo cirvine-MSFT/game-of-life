@@ -261,6 +261,36 @@ fn extend_max_iterations_lifts_the_cap_and_clears_max_iter_status() {
 }
 
 #[test]
+fn extend_max_iterations_rehydrates_stats_so_next_cap_hit_finalises() {
+    // Regression for the bug where `advance_one` did `data.stats.take()`
+    // at terminal state, but `extend_max_iterations` only cleared
+    // `final_stats` without restoring `data.stats`. The next cap-hit
+    // would then silently fail to finalise, leaving `info.completed` =
+    // false forever and spinning the play worker.
+    let s = fresh_session(3, 3, 1);
+    s.paint_cells(&[
+        CellEdit { x: 0, y: 1, alive: true },
+        CellEdit { x: 1, y: 1, alive: true },
+        CellEdit { x: 2, y: 1, alive: true },
+    ])
+    .unwrap();
+    s.start_run().unwrap();
+    s.advance_one().unwrap();
+    assert!(s.info().completed);
+    s.extend_max_iterations(3).unwrap();
+    assert!(!s.info().completed);
+    s.advance_one().unwrap();
+    s.advance_one().unwrap();
+    let info = s.info();
+    assert!(
+        info.completed,
+        "second cap hit must finalise; got {:?}",
+        info
+    );
+    assert_eq!(info.status, Some(IpcRunStatus::MaxIterations));
+}
+
+#[test]
 fn cancel_flag_round_trip() {
     let s = Arc::new(RunSession::new());
     assert!(!s.cancel_requested());
@@ -294,4 +324,34 @@ fn create_run_rejects_too_much_memory() {
         .create_run(100, 100, InitialSource::Empty, 10, Some(64))
         .unwrap_err();
     assert!(err.to_string().contains("exceeds"));
+}
+
+#[test]
+fn begin_playing_rejects_unless_paused() {
+    let s = RunSession::new();
+    // No board yet → Setup mode → reject.
+    let err = s.begin_playing().unwrap_err();
+    assert!(err.to_string().contains("Paused"));
+}
+
+#[test]
+fn begin_playing_atomically_transitions_paused_to_playing() {
+    let s = fresh_session(3, 3, 5);
+    s.start_run().unwrap();
+    assert_eq!(s.info().mode, Mode::Paused);
+    s.begin_playing().unwrap();
+    assert_eq!(s.info().mode, Mode::Playing);
+    // Second call must fail since we're no longer Paused.
+    let err = s.begin_playing().unwrap_err();
+    assert!(err.to_string().contains("Paused"));
+}
+
+#[test]
+fn begin_jumping_atomically_transitions_paused_to_jumping_to() {
+    let s = fresh_session(3, 3, 100);
+    s.start_run().unwrap();
+    s.begin_jumping(50).unwrap();
+    let info = s.info();
+    assert_eq!(info.mode, Mode::JumpingTo);
+    assert_eq!(info.jump_target, Some(50));
 }

@@ -124,7 +124,12 @@ export const useStore = create<AppState>((set, get) => ({
     if (get().connected) {
       return;
     }
-    set({ connected: true });
+    // Don't latch `connected: true` before the subscription chain — if
+    // anything throws, the catch clause needs to reset the flag so the
+    // user's Retry button can re-enter this method. Mark a separate
+    // "connecting" state until everything is in place.
+    set({ initError: null });
+    const localUnlistens: UnlistenFn[] = [];
     try {
       const session = await getSession();
       set({ session });
@@ -138,10 +143,11 @@ export const useStore = create<AppState>((set, get) => ({
         await get().refreshHistory();
       }
 
-      // Wire up event listeners; store the unlisten fns so a future
-      // hot-reload tear-down can call them.
-      unlistens = await Promise.all([
-        onBoardTick((tick) => {
+      // Register listeners sequentially so a mid-list failure can still
+      // tear down whatever already registered. Promise.all() would leak
+      // the earlier-resolved unlisten functions on a later rejection.
+      localUnlistens.push(
+        await onBoardTick((tick) => {
           set({
             board: decodeBoard(tick.board),
             latestTick: {
@@ -154,21 +160,38 @@ export const useStore = create<AppState>((set, get) => ({
             history: [...get().history, tick.alive],
           });
         }),
-        onJumpProgress((progress) => {
+      );
+      localUnlistens.push(
+        await onJumpProgress((progress) => {
           set({ jumpProgress: progress });
         }),
-        onRunCompleted((completion) => {
+      );
+      localUnlistens.push(
+        await onRunCompleted((completion) => {
           set({
             finalStats: completion.stats,
             jumpProgress: null,
           });
         }),
-        onSessionChanged((info) => {
+      );
+      localUnlistens.push(
+        await onSessionChanged((info) => {
           set({ session: info });
         }),
-      ]);
+      );
+      unlistens = localUnlistens;
+      set({ connected: true });
     } catch (error) {
+      // Clean up any listeners that did register before the failure.
+      for (const fn of localUnlistens) {
+        try {
+          fn();
+        } catch {
+          // Tear-down errors here are non-actionable; swallow.
+        }
+      }
       set({
+        connected: false,
         initError: error instanceof Error ? error.message : String(error),
       });
     }
