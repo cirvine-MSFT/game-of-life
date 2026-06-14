@@ -242,9 +242,155 @@ Only one: **extinction**. If every cell is dead after a generation, the run earl
 
 ### Deferred (future PRs)
 
-- **Streaming board** — windowed file-backed board impl. The format is designed to enable this (fixed-width rows, `size:` header, fence markers allow `seek`); the impl is its own PR.
+- **Streaming board** ✅ — shipped in the streaming PR. See [Streaming Board for Very Large Boards](#streaming-board-for-very-large-boards) below.
 - **Cycle and still-life detection** — adds `status: stable` and `status: cyclic` to the writer. Format already reserves them.
 - **Cryptographic signing** — separate from the integrity check above; would need adversarial threat model.
+
+## Streaming Board for Very Large Boards
+
+**Decision**: When an `--initial-board` (initializer-based) run would
+allocate a board larger than `--max-board-memory`, auto-promote to a
+file-streaming backend instead of failing.
+
+### Motivating constraint
+
+`InMemoryBoard` is a `Vec<CellState>` whose allocation is bounded by
+`--max-board-memory`. The original behavior was: if the board doesn't fit,
+surface `MemoryBudgetExceeded` and stop. For very large boards (e.g., a
+researcher running 10⁹-cell experiments) or very constrained devices
+(e.g., a few-KB cap on small hardware), that's a real wall.
+
+### Algorithm: 2D chunked sliding window with stencil halo
+
+`StreamingBoard` keeps a small rectangular **chunk** of cells in memory
+at a time, sliding across the board as the updater scans. The chunk is
+itself an `InMemoryBoard` sized to the maximum loaded extent; the
+streaming wrapper tracks **which absolute rectangle is currently
+loaded** and **which sub-rectangle the chunk position owns** for the
+current update step.
+
+Two rectangles per chunk position, both in `usize` global coordinates:
+
+- **Owned**: cells this chunk position will update during the current
+  pass. Owned rectangles partition the board — every in-board cell
+  belongs to exactly one chunk position's owned region.
+- **Loaded**: owned cells + 1-cell halo on each non-board-edge side
+  so the 3×3 Conway stencil never has to cross into adjacent chunks.
+
+Out-of-board halo (e.g., would-be left halo when owned starts at
+`x = 0`) is **never stored**. The streaming board's own bounds check in
+`cell_state(x, y)` returns `Dead` for any `(x, y)` outside
+`[0, width) × [0, height)` directly — never via the chunk's
+`InMemoryBoard`. This is the critical invariant that prevents the
+chunk's artificial edges from being confused with the real board edges.
+
+Width-first chunk dimensioning prefers the **row-band fast path** when
+the budget allows a chunk spanning the full board width
+(`owned_cols == width`); horizontal sliding is then unnecessary. When
+the budget can't fit a full-width row-band, the streaming board falls
+back to the general 2D path with horizontal sliding inside each
+row-band.
+
+### Cell update is unchanged
+
+`StreamingBoard` implements `BoardView` + `BoardEditor`. Update logic
+runs via the new `CellRule` trait + `BoardEditor::advance_with_rule`:
+
+- `CellRule::next_state(currently_alive: bool, live_neighbors: usize) -> bool`
+  is a pure decision function. Rules never see or return transitional
+  states.
+- `InPlaceTransitionalUpdater` is a `CellRule` impl encoding Conway
+  B3/S23. The same rule drives both backends.
+- The board owns iteration. `InMemoryBoard` runs the existing two-pass
+  mark+normalize logic in place; `StreamingBoard` does the same logic
+  chunk-by-chunk.
+- The shared `CellState::is_originally_alive` helper is the **single
+  source of truth** for "did this neighbor cell start the generation
+  alive?" during mark passes (Alive | Dying = originally live). Both
+  backends call it; rules never need to know about it.
+
+The trait surface stays object-safe (`advance_with_rule(&dyn CellRule)`,
+not generic) so existing `&mut dyn BoardEditor` consumers keep working.
+
+### Scratch file format
+
+The backing store is a private binary file with magic
+`GOL-SCRATCH v1`:
+
+```
+Header (64 bytes):
+  bytes  0..16: magic                = "GOL-SCRATCH v1\n\0"
+  bytes 16..20: schema_version       = u32 LE
+  bytes 20..28: created_at_unix_secs = u64 LE
+  bytes 28..36: width                = u64 LE
+  bytes 36..44: height               = u64 LE
+  bytes 44..52: row_bytes            = u64 LE (= ceil(width * 2 / 8))
+  bytes 52..64: reserved             = 12 × 0
+
+Row payload (height rows × row_bytes each, fixed stride):
+  2 bits per cell, packed little-endian within each byte.
+  4 cells per byte. Codes: 00=Dead, 01=Alive, 10=Dying, 11=Resurrecting.
+```
+
+Random-access reads/writes for cells `[cstart, cend)` in row `y`:
+
+- Row file offset: `64 + y * row_bytes`.
+- Byte range within row: `[cstart / 4, ceil(cend / 4))`.
+- **Writes** of unaligned ranges use **read-modify-write** for the two
+  boundary bytes so bits belonging to neighboring cells outside the
+  range are preserved. Interior bytes are written wholesale.
+
+The format is internal-only. User-facing `.gol-snapshot` files stay
+exactly as before: ASCII, hand-editable, hash-free, two-state.
+
+### File lifecycle
+
+- **Scratch filename**: `gol-scratch-<run_id>-<random_suffix>.bin` so
+  concurrent runs in the same `--working-dir` never collide.
+- **Default location**: `TMPDIR` / `%TEMP%`. Override via
+  `--working-dir <PATH>`.
+- **Auto-delete on success**: yes.
+- **Preserve on failure**: yes. Panics, Ctrl-C, SIGKILL, or any I/O
+  error leaves the scratch file on disk for inspection. We don't
+  attempt panic-safe cleanup because SIGKILL can't run destructors
+  anyway, so guaranteed cleanup is impossible; we prefer the simpler
+  "intentional debug artifact" semantics.
+
+### Memory cap scope
+
+`--max-board-memory` governs the streaming board's **chunk RAM**, using
+`size_of::<CellState>()` per cell (the in-memory cost). The 2-bit disk
+packing is irrelevant to RAM accounting — only the scratch file's size.
+
+The streaming floor is the cost of a minimum-size 3×3 loaded chunk plus
+the per-row dirty-bit overhead: ~10–12 bytes with the current
+single-byte `CellState`. Below that we surface a clear suggested-override
+error matching the existing in-memory budget UX.
+
+### What's deferred
+
+- **Row-band fusion**: the row-band fast path currently runs mark +
+  normalize as two separate chunked iterations. Fusing them — after
+  marking row `y`, normalize row `y-1` (whose last neighbor consumer
+  was `y`'s mark pass), with a final-row drain — would halve I/O. The
+  invariant is documented in the code so this is straightforward to
+  add when profiling justifies it.
+- **Snapshot streaming reader**: `--load-board` keeps the in-memory
+  path; loading a snapshot larger than the cap still fails with the
+  existing error. The streaming snapshot **writer** is implemented and
+  used by `--save-board` so streaming runs can persist their final
+  state.
+- **Run-record external board references**: in streaming mode, a
+  requested `--save-run` produces a warning and skips. Embedding
+  external references (`EXTERNAL_INITIAL_BOARD` / `EXTERNAL_FINAL_BOARD`)
+  alongside the run record requires non-trivial persistence refactors;
+  ships in a follow-up.
+- **Snapshot streaming reader** + **run-record external boards**
+  together would close the loop on streaming-sized loading and saving.
+- **Full 2D fusion**, **time-skewing**, **trapezoidal tiling**, and
+  other temporal-blocking optimizations are real techniques for
+  out-of-core stencil computations but well above the bar of an
+  interview prototype.
 
 ## Cross-Platform Considerations
 
