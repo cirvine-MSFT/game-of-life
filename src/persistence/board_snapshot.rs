@@ -31,11 +31,11 @@
 
 use std::fmt;
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufReader, Read, Write};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::board::{CellState, InMemoryBoard};
+use crate::board::{BoardView, CellCoordinate, CellState, InMemoryBoard, StreamingBoard};
 
 use super::errors::PersistenceIoError;
 use super::magic::{sniff_from_reader, FileKind, MagicError, BOARD_SNAPSHOT_MAGIC, SCHEMA_VERSION};
@@ -459,6 +459,124 @@ pub fn write_board_block_to<W: Write>(
     writeln!(writer, "dead_count: {dead}")?;
     writer.write_all(&grid_buf)?;
     writeln!(writer, "{}", format_end_fence(label))?;
+    Ok(())
+}
+
+// -------- streaming snapshot writing -------------------------------------
+
+/// Write a standalone board snapshot file from a `StreamingBoard`,
+/// streaming row-by-row from the scratch file so the host never has to
+/// hold the entire grid in memory.
+///
+/// Refuses to overwrite an existing file at `path` (matching
+/// `write_board_snapshot`'s semantics).
+pub fn write_streaming_board_snapshot(
+    path: impl AsRef<Path>,
+    board: &mut StreamingBoard,
+) -> Result<(), BoardSnapshotWriteError> {
+    let path = path.as_ref();
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|e| {
+            if e.kind() == io::ErrorKind::AlreadyExists {
+                BoardSnapshotWriteError::OutputExists {
+                    path: path.to_path_buf(),
+                }
+            } else {
+                BoardSnapshotWriteError::Io(PersistenceIoError::new(
+                    path,
+                    "creating streaming snapshot file",
+                    e,
+                ))
+            }
+        })?;
+    let mut writer = BufWriter::new(file);
+    write_streaming_board_snapshot_to(&mut writer, board).map_err(|e| {
+        BoardSnapshotWriteError::Io(PersistenceIoError::new(
+            path,
+            "writing streaming snapshot",
+            e,
+        ))
+    })?;
+    writer.flush().map_err(|e| {
+        BoardSnapshotWriteError::Io(PersistenceIoError::new(
+            path,
+            "flushing streaming snapshot",
+            e,
+        ))
+    })?;
+    Ok(())
+}
+
+/// Streaming counterpart of `write_board_snapshot_to`. Writes the standard
+/// snapshot file format to an arbitrary writer, but pulls cell data from
+/// a `StreamingBoard` one row at a time via `peek_cell` so peak host
+/// memory stays bounded by the streaming board's chunk, not the board
+/// size.
+///
+/// The output is byte-identical to what `write_board_snapshot_to` would
+/// produce for the equivalent in-memory board — same magic header, same
+/// `size` / `encoding` / `alive_count` / `dead_count` fields, same
+/// `#`/`.` grid, same fences.
+pub fn write_streaming_board_snapshot_to<W: Write>(
+    writer: &mut W,
+    board: &mut StreamingBoard,
+) -> io::Result<()> {
+    writeln!(writer, "{BOARD_SNAPSHOT_MAGIC}")?;
+    writeln!(writer, "schema_version: {SCHEMA_VERSION}")?;
+    writeln!(writer, "created_at: {}", format_utc(SystemTime::now()))?;
+    writeln!(writer)?;
+
+    let width = board.width();
+    let height = board.height();
+    // We have to emit alive_count / dead_count BEFORE the grid, so we
+    // pre-scan once via peek_cell to total live cells, then emit the
+    // header, then re-scan for the grid. peek_cell does the slide
+    // bookkeeping but stays within one chunk's working set.
+    let mut alive_count: u64 = 0;
+    for y in 0..height {
+        for x in 0..width {
+            if matches!(
+                board
+                    .peek_cell(CellCoordinate::new(x, y))
+                    .map_err(io::Error::other)?,
+                CellState::Alive
+            ) {
+                alive_count += 1;
+            }
+        }
+    }
+    let total: u64 = (width as u64).saturating_mul(height as u64);
+    let dead_count = total - alive_count;
+
+    writeln!(writer, "{}", format_begin_fence(BOARD_BLOCK_LABEL))?;
+    writeln!(writer, "size: {width}x{height}")?;
+    writeln!(writer, "encoding: {ENCODING_ASCII}")?;
+    writeln!(writer, "alive_count: {alive_count}")?;
+    writeln!(writer, "dead_count: {dead_count}")?;
+
+    // Stream the grid one row at a time. peek_cell may slide the chunk
+    // between rows; that's fine because each row is independent at the
+    // file level.
+    let mut row_buf = Vec::with_capacity(width + 1);
+    for y in 0..height {
+        row_buf.clear();
+        for x in 0..width {
+            let ch = match board
+                .peek_cell(CellCoordinate::new(x, y))
+                .map_err(io::Error::other)?
+            {
+                CellState::Alive => b'#',
+                _ => b'.',
+            };
+            row_buf.push(ch);
+        }
+        row_buf.push(b'\n');
+        writer.write_all(&row_buf)?;
+    }
+    writeln!(writer, "{}", format_end_fence(BOARD_BLOCK_LABEL))?;
     Ok(())
 }
 

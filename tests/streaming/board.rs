@@ -377,3 +377,67 @@ fn concurrent_runs_in_same_workdir_get_unique_filenames() {
     }
     fs::remove_dir(&dir).ok();
 }
+
+#[test]
+fn streaming_snapshot_writer_matches_in_memory_writer_byte_for_byte() {
+    use game_of_life::persistence::{
+        write_board_snapshot_to, write_streaming_board_snapshot_to, BoardSnapshot,
+    };
+
+    let pattern: &[&str] = &[
+        "..........",
+        "..#.......",
+        "...#......",
+        ".###......",
+        "..........",
+        "..........",
+        ".....#....",
+        "......#...",
+        "....###...",
+        "..........",
+    ];
+    let in_mem = in_memory_from_grid(pattern);
+    let mut streaming = make_streaming(
+        in_mem.width(),
+        in_mem.height(),
+        4096,
+        Some((2, 4)),
+        "snapshot-byte-eq",
+    );
+    seed_streaming_from_grid(&mut streaming, pattern);
+
+    // Snapshot via the streaming writer.
+    let mut streaming_bytes: Vec<u8> = Vec::new();
+    write_streaming_board_snapshot_to(&mut streaming_bytes, &mut streaming)
+        .expect("streaming writer should succeed");
+
+    // Build the equivalent in-memory snapshot and write it. Both writers
+    // use a freshly-grabbed `SystemTime::now()` for created_at, so we
+    // can't compare those lines verbatim. We compare everything else.
+    let snapshot = BoardSnapshot::for_board(in_mem);
+    let mut in_mem_bytes: Vec<u8> = Vec::new();
+    write_board_snapshot_to(&mut in_mem_bytes, &snapshot).expect("in-memory writer should succeed");
+
+    // Strip the `created_at: ...` lines from each so the comparison is
+    // timestamp-independent.
+    let streaming_str = String::from_utf8(streaming_bytes).expect("utf8");
+    let in_mem_str = String::from_utf8(in_mem_bytes).expect("utf8");
+
+    let strip_created_at = |s: &str| -> String {
+        s.lines()
+            .filter(|line| !line.starts_with("created_at:"))
+            .map(String::from)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    assert_eq!(
+        strip_created_at(&streaming_str),
+        strip_created_at(&in_mem_str),
+        "streaming snapshot output should match in-memory snapshot output byte-for-byte (excluding timestamp)"
+    );
+
+    let scratch_path = streaming.scratch_path().to_path_buf();
+    drop(streaming);
+    fs::remove_file(scratch_path).ok();
+}
