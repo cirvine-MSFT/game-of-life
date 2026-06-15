@@ -104,6 +104,10 @@ pub enum StreamingBoardCreationError {
         required_min_bytes: usize,
         suggested_min_bytes: usize,
     },
+    WorkingDirUnavailable {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 impl fmt::Display for StreamingBoardCreationError {
@@ -124,6 +128,11 @@ impl fmt::Display for StreamingBoardCreationError {
                 f,
                 "Streaming board for {width}x{height} requires at least {required_min_bytes} bytes of working memory (the minimum 3x3 loaded chunk plus dirty-row tracking) but --max-board-memory is {max_memory_bytes} bytes. Try --max-board-memory {suggested_min_bytes}."
             ),
+            StreamingBoardCreationError::WorkingDirUnavailable { path, source } => write!(
+                f,
+                "Could not prepare --working-dir '{}' for the scratch file: {source}",
+                path.display()
+            ),
         }
     }
 }
@@ -132,6 +141,7 @@ impl std::error::Error for StreamingBoardCreationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             StreamingBoardCreationError::Scratch(e) => Some(e),
+            StreamingBoardCreationError::WorkingDirUnavailable { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -188,7 +198,13 @@ impl StreamingBoard {
         let max_loaded_rows = (target_owned_rows + 2).min(height);
         let max_loaded_cols = (target_owned_cols + 2).min(width);
 
-        // Create the scratch file with a unique name.
+        // Create the scratch file with a unique name. Auto-create the
+        // working directory if it doesn't exist — users passing
+        // `--working-dir /some/path` reasonably expect it to be created
+        // for them (the OS temp dir is always there, but custom paths
+        // often aren't). Anything that fails create_dir_all (permission
+        // denied, name exists as a non-directory, etc.) surfaces with
+        // its own clear OS error.
         let dir_owned;
         let dir = match working_dir {
             Some(d) => d,
@@ -197,6 +213,12 @@ impl StreamingBoard {
                 &dir_owned
             }
         };
+        std::fs::create_dir_all(dir).map_err(|e| {
+            StreamingBoardCreationError::WorkingDirUnavailable {
+                path: dir.to_path_buf(),
+                source: e,
+            }
+        })?;
         let scratch_path = dir.join(format!(
             "gol-scratch-{}-{}.bin",
             scratch_name_hint,

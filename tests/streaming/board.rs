@@ -340,6 +340,44 @@ fn working_dir_override_places_scratch_there() {
 }
 
 #[test]
+fn working_dir_is_auto_created_if_missing() {
+    // Users passing --working-dir /some/path don't expect to have to
+    // mkdir it first; the streaming board should create it (matching
+    // the OS-temp-dir default's "always exists" experience). The
+    // original behavior surfaced an opaque os error 3 deep inside
+    // ScratchFile::create.
+    let mut base = env::temp_dir();
+    base.push(format!(
+        "gol-test-autocreate-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    base.push("nested");
+    base.push("does-not-exist");
+    let _ = fs::remove_dir_all(&base);
+    assert!(!base.exists(), "preconditions: dir should not exist yet");
+
+    let params = StreamingBoardParams {
+        width: 4,
+        height: 4,
+        max_board_memory_bytes: 4096,
+        working_dir: Some(&base),
+        scratch_name_hint: "autocreate",
+        chunk_rows_override: None,
+        chunk_cols_override: None,
+    };
+    let board = StreamingBoard::new(params).expect("create should auto-make the dir");
+    assert!(base.exists(), "working dir should have been auto-created");
+    let scratch_path = board.scratch_path().to_path_buf();
+    drop(board);
+    fs::remove_file(&scratch_path).ok();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
 fn concurrent_runs_in_same_workdir_get_unique_filenames() {
     let mut dir = env::temp_dir();
     dir.push(format!("gol-test-concurrent-{}", std::process::id()));
