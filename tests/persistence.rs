@@ -20,5 +20,7 @@ mod parser;
 mod run_id;
 #[path = "persistence/run_record.rs"]
 mod run_record;
+#[path = "persistence/scratch.rs"]
+mod scratch;
 #[path = "persistence/timestamps.rs"]
 mod timestamps;

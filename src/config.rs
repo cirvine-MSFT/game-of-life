@@ -16,6 +16,14 @@ pub struct SimulationConfig {
     pub save: SaveSettings,
     pub integrity: IntegrityMode,
     pub max_input_file_bytes: usize,
+    /// Working directory for the streaming board's scratch file. `None`
+    /// means use the OS temp directory. Only consulted when the run
+    /// auto-promotes to streaming mode.
+    pub working_dir: Option<PathBuf>,
+    /// Explicit path to save the final board as a standalone snapshot.
+    /// Independent of `--save-run`. Useful when the board is too large
+    /// to embed in a run record (streaming mode).
+    pub save_board_path: Option<PathBuf>,
     /// Non-fatal warnings raised during CLI parsing (e.g. an option that was
     /// silently overridden by a higher-precedence option). `main.rs` prints
     /// these to stderr before starting the run so the user sees them in
@@ -33,6 +41,8 @@ impl Default for SimulationConfig {
             save: SaveSettings::default(),
             integrity: IntegrityMode::Enforce,
             max_input_file_bytes: persistence::DEFAULT_MAX_INPUT_FILE_BYTES,
+            working_dir: None,
+            save_board_path: None,
             warnings: Vec::new(),
         }
     }
@@ -330,6 +340,8 @@ where
     let mut save_run_path: Option<PathBuf> = None;
     let mut runs_dir: Option<PathBuf> = None;
     let mut no_save = false;
+    let mut working_dir: Option<PathBuf> = None;
+    let mut save_board_path: Option<PathBuf> = None;
     let mut integrity = IntegrityMode::Enforce;
     let mut replay_path: Option<PathBuf> = None;
     let mut extract_board_path: Option<PathBuf> = None;
@@ -485,6 +497,26 @@ where
             continue;
         }
 
+        if arg == "--working-dir" {
+            let value = take_value(&mut args, &arg, "a path to a directory")?;
+            working_dir = Some(PathBuf::from(value));
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--working-dir=") {
+            working_dir = Some(PathBuf::from(value));
+            continue;
+        }
+
+        if arg == "--save-board" {
+            let value = take_value(&mut args, &arg, "a path to save the final board snapshot")?;
+            save_board_path = Some(PathBuf::from(value));
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--save-board=") {
+            save_board_path = Some(PathBuf::from(value));
+            continue;
+        }
+
         if arg == "--replay" {
             let value = take_value(&mut args, &arg, "a path to a run record file")?;
             replay_path = Some(PathBuf::from(value));
@@ -536,7 +568,9 @@ where
             || save_run_path.is_some()
             || runs_dir.is_some()
             || no_save
-            || additional_iterations.is_some();
+            || additional_iterations.is_some()
+            || working_dir.is_some()
+            || save_board_path.is_some();
         if conflicting {
             return Err(ConfigError::ConflictingCommands {
                 details: "--replay is a standalone verb; do not combine with run/load/continue/save options",
@@ -562,7 +596,9 @@ where
             || save_run_path.is_some()
             || runs_dir.is_some()
             || no_save
-            || additional_iterations.is_some();
+            || additional_iterations.is_some()
+            || working_dir.is_some()
+            || save_board_path.is_some();
         if conflicting {
             return Err(ConfigError::ConflictingCommands {
                 details:
@@ -657,6 +693,8 @@ where
         save,
         integrity,
         max_input_file_bytes,
+        working_dir,
+        save_board_path,
         warnings,
     }))
 }
