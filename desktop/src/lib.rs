@@ -11,6 +11,7 @@ pub mod session;
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(std::sync::Arc::new(session::RunSession::new()))
         .invoke_handler(tauri::generate_handler![
             commands::session_commands::get_session,
@@ -18,6 +19,7 @@ pub fn run() {
             commands::session_commands::get_alive_history,
             commands::session_commands::get_final_stats,
             commands::session_commands::default_save_dir,
+            commands::session_commands::save_board_snapshot,
             commands::setup_commands::create_run,
             commands::setup_commands::set_cell,
             commands::setup_commands::paint_cells,

@@ -27,6 +27,11 @@ export const getFinalStats = (): Promise<IpcRunStatistics | null> =>
 
 export const defaultSaveDir = (): Promise<string> => invoke("default_save_dir");
 
+export const saveBoardSnapshot = (
+  path: string,
+  overwrite: boolean,
+): Promise<string> => invoke("save_board_snapshot", { path, overwrite });
+
 // --- setup_commands ---
 
 export interface CreateRunArgs {

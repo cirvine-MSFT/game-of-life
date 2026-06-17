@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use parking_lot::{Mutex, MutexGuard};
 
+use game_of_life::persistence::{write_board_snapshot, BoardSnapshot, BoardSnapshotWriteError};
 use game_of_life::stats::run_statistics::RunStatus;
 use game_of_life::{
     BlinkerBoardInitializer, BoardInitializer, CellState, DemoBoardInitializer,
@@ -239,6 +240,13 @@ impl RunSession {
     /// Sets up a fresh run in Setup mode. Discards any prior in-flight run.
     /// Memory budget defaults to `DEFAULT_MAX_BOARD_MEMORY_BYTES` when
     /// `max_memory_bytes` is `None`.
+    ///
+    /// Pre-checks `InMemoryBoard::allocation_bytes` against the budget
+    /// before calling `try_new`, mirroring how the CLI decides whether
+    /// a board needs streaming. We don't auto-promote yet (issue #10),
+    /// so we surface a dedicated `StreamingNotImplemented` error with
+    /// a friendly message instead of the lower-level
+    /// `MemoryBudgetExceeded`.
     pub fn create_run(
         &self,
         width: u32,
@@ -251,6 +259,22 @@ impl RunSession {
             return Err(SessionError::ZeroDimension);
         }
         let budget = max_memory_bytes.unwrap_or(DEFAULT_MAX_BOARD_MEMORY_BYTES);
+
+        // Pre-check before allocating. If the requested board would
+        // exceed the budget, fail early with the streaming-aware
+        // message; if `allocation_bytes` itself overflows usize the
+        // board is genuinely too large for this platform and we
+        // surface the underlying allocation error.
+        let allocation = InMemoryBoard::allocation_bytes(width as usize, height as usize)?;
+        if allocation > budget {
+            return Err(SessionError::StreamingNotImplemented {
+                width,
+                height,
+                required_bytes: allocation,
+                budget_bytes: budget,
+            });
+        }
+
         let mut board = InMemoryBoard::try_new(width as usize, height as usize, budget)?;
 
         match source {
@@ -621,6 +645,19 @@ pub enum SessionError {
     RunCompleted,
     #[error("board width and height must be greater than zero")]
     ZeroDimension,
+    #[error(
+        "Board {width}x{height} needs {required_bytes} bytes but the desktop budget is {budget_bytes}. \
+        Streaming-mode boards (which the CLI supports via --working-dir) are not yet wired into the \
+        desktop visualizer — see issue #10. Pick a smaller board or raise the budget."
+    )]
+    StreamingNotImplemented {
+        width: u32,
+        height: u32,
+        required_bytes: usize,
+        budget_bytes: usize,
+    },
+    #[error("save board snapshot failed: {0}")]
+    SaveBoardSnapshot(String),
     #[error(transparent)]
     Allocation(#[from] InMemoryBoardCreationError),
     #[error(transparent)]
@@ -641,6 +678,8 @@ impl serde::Serialize for SessionError {
             SessionError::InvalidMaxIterations { .. } => "invalidMaxIterations",
             SessionError::RunCompleted => "runCompleted",
             SessionError::ZeroDimension => "zeroDimension",
+            SessionError::StreamingNotImplemented { .. } => "streamingNotImplemented",
+            SessionError::SaveBoardSnapshot(_) => "saveBoardSnapshot",
             SessionError::Allocation(_) => "allocation",
             SessionError::RandomInit(_) => "randomInit",
         };
@@ -648,5 +687,29 @@ impl serde::Serialize for SessionError {
         state.serialize_field("kind", kind)?;
         state.serialize_field("message", &self.to_string())?;
         state.end()
+    }
+}
+
+impl RunSession {
+    /// Saves the *current* board (whatever iteration we're on) as a
+    /// standalone `GOL-BOARD-SNAPSHOT v1` file at `path`. Mirrors the
+    /// CLI's `--save-board` escape hatch so users can persist a board
+    /// of interest without waiting for the run to terminate.
+    ///
+    /// Wraps `write_board_snapshot`, which refuses to overwrite — the
+    /// frontend is expected to handle overwrite confirmation by
+    /// removing the file first if the user OK's it.
+    pub fn save_board_snapshot(&self, path: &std::path::Path) -> Result<(), SessionError> {
+        let board = {
+            let data = self.lock();
+            data.board.clone().ok_or(SessionError::NoBoard)?
+        };
+        let snapshot = BoardSnapshot::for_board(board);
+        write_board_snapshot(path, &snapshot).map_err(|e| match e {
+            BoardSnapshotWriteError::OutputExists { path } => SessionError::SaveBoardSnapshot(
+                format!("Refusing to overwrite existing file '{}'", path.display()),
+            ),
+            BoardSnapshotWriteError::Io(io) => SessionError::SaveBoardSnapshot(io.to_string()),
+        })
     }
 }

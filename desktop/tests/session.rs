@@ -323,7 +323,64 @@ fn create_run_rejects_too_much_memory() {
     let err = s
         .create_run(100, 100, InitialSource::Empty, 10, Some(64))
         .unwrap_err();
-    assert!(err.to_string().contains("exceeds"));
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Streaming-mode boards") || msg.contains("exceeds"),
+        "expected friendly streaming message, got: {msg}",
+    );
+}
+
+#[test]
+fn create_run_friendly_streaming_error_when_budget_exceeded() {
+    let s = RunSession::new();
+    // 16384 x 16384 = 256 MiB of CellState bytes, well past the 64 MiB
+    // budget we pass below. The exact byte cost of CellState is 1 byte
+    // (an enum with 4 variants), so size_of_val gives 1.
+    let err = s
+        .create_run(
+            16384,
+            16384,
+            InitialSource::Empty,
+            10,
+            Some(64 * 1024 * 1024),
+        )
+        .unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("16384x16384"), "got: {msg}");
+    assert!(msg.contains("Streaming"), "got: {msg}");
+    assert!(msg.contains("issue #10"), "got: {msg}");
+}
+
+#[test]
+fn save_board_snapshot_writes_a_gol_file_and_round_trips() {
+    use std::env;
+    use std::fs;
+
+    let s = fresh_session(4, 4, 10);
+    s.set_cell(0, 0, true).unwrap();
+    s.set_cell(1, 1, true).unwrap();
+    s.set_cell(2, 2, true).unwrap();
+
+    let tmp = env::temp_dir().join(format!(
+        "gol-desktop-test-{}.gol",
+        std::process::id(),
+    ));
+    let _ = fs::remove_file(&tmp);
+
+    s.save_board_snapshot(&tmp).unwrap();
+
+    let contents = fs::read_to_string(&tmp).unwrap();
+    assert!(
+        contents.contains("GOL-BOARD-SNAPSHOT v1"),
+        "snapshot must use the standard magic header, got: {}",
+        contents.lines().next().unwrap_or("")
+    );
+
+    // Refuses to overwrite without explicit removal.
+    let err = s.save_board_snapshot(&tmp).unwrap_err();
+    assert!(err.to_string().to_lowercase().contains("refusing to overwrite"));
+
+    fs::remove_file(&tmp).ok();
 }
 
 #[test]

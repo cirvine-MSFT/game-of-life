@@ -1,7 +1,10 @@
 //! Read-only session queries plus path helpers.
 //!
 //! These commands never mutate session state, so they can run during
-//! any mode without serialising against the play/jump worker.
+//! any mode without serialising against the play/jump worker. The one
+//! exception is `save_board_snapshot`, which reads the current board
+//! and writes it to disk — kept here because it shares the read-only
+//! "I don't care what mode you're in" semantics.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,7 +12,7 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::ipc_types::{BoardPayload, IpcRunStatistics, SessionInfo};
-use crate::session::RunSession;
+use crate::session::{RunSession, SessionError};
 
 #[tauri::command]
 pub fn get_session(session: State<'_, Arc<RunSession>>) -> SessionInfo {
@@ -59,4 +62,32 @@ fn default_save_dir_path(app: &tauri::AppHandle) -> Result<PathBuf, tauri::Error
     }
     let data = app.path().app_data_dir()?;
     Ok(data.join("runs"))
+}
+
+/// Saves the current board as a standalone `GOL-BOARD-SNAPSHOT v1`
+/// file. Mirrors the CLI's `--save-board` flag so users have an
+/// escape hatch for "this board is interesting, preserve it" without
+/// needing the full run record (which can only be saved post-run).
+///
+/// `overwrite=true` removes any pre-existing file at `path` before
+/// writing — gives the frontend a clean "Save As" UX where the
+/// confirmation dialog gates the destructive step.
+#[tauri::command]
+pub fn save_board_snapshot(
+    session: State<'_, Arc<RunSession>>,
+    path: String,
+    overwrite: bool,
+) -> Result<String, SessionError> {
+    let p = PathBuf::from(&path);
+    if overwrite && p.exists() {
+        std::fs::remove_file(&p).map_err(|e| {
+            SessionError::SaveBoardSnapshot(format!(
+                "Failed to overwrite {}: {}",
+                p.display(),
+                e
+            ))
+        })?;
+    }
+    session.save_board_snapshot(&p)?;
+    Ok(p.display().to_string())
 }

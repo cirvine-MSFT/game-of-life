@@ -19,6 +19,7 @@ import {
   clearBoard,
   createRun,
   decodeBoard,
+  defaultSaveDir,
   editBoard,
   extendMaxIterations,
   getAliveHistory,
@@ -35,6 +36,7 @@ import {
   play,
   randomize,
   restart,
+  saveBoardSnapshot,
   setCell,
   startRun,
   step,
@@ -95,6 +97,9 @@ interface AppState {
 
   // Settings
   setTheme: (theme: ThemeChoice) => void;
+
+  // Persistence
+  saveBoardSnapshot: () => Promise<void>;
 
   // Tear-down
   disconnect: () => void;
@@ -298,6 +303,53 @@ export const useStore = create<AppState>((set, get) => ({
 
   setTheme: (theme) => {
     set({ theme });
+  },
+
+  saveBoardSnapshot: async () => {
+    // Lazy-import so the dialog plugin is only loaded when the user
+    // actually triggers a save. Keeps the initial JS bundle smaller
+    // and avoids touching the Tauri runtime on smoke tests.
+    const [{ save }, { ask }] = await Promise.all([
+      import("@tauri-apps/plugin-dialog"),
+      import("@tauri-apps/plugin-dialog"),
+    ]);
+    const session = get().session;
+    if (!session) {
+      return;
+    }
+    const defaultName = `board-iter-${session.iteration}.gol`;
+    let defaultPath: string | undefined;
+    try {
+      defaultPath = `${await defaultSaveDir()}/${defaultName}`;
+    } catch {
+      defaultPath = defaultName;
+    }
+    const chosen = await save({
+      title: "Save board snapshot",
+      defaultPath,
+      filters: [{ name: "Game of Life board", extensions: ["gol"] }],
+    });
+    if (!chosen) {
+      return;
+    }
+    try {
+      await saveBoardSnapshot(chosen, false);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.toLowerCase().includes("refusing to overwrite")) {
+        const overwrite = await ask(
+          `${chosen} already exists. Overwrite?`,
+          { title: "Overwrite file?", kind: "warning" },
+        );
+        if (overwrite) {
+          await saveBoardSnapshot(chosen, true);
+        } else {
+          return;
+        }
+      } else {
+        throw error;
+      }
+    }
   },
 
   disconnect: () => {
