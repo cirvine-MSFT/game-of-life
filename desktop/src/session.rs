@@ -147,7 +147,10 @@ impl RunSession {
             dirty: data.dirty,
             completed: data.final_stats.is_some(),
             jump_target: data.jump_target,
-            status: data.final_stats.as_ref().map(|s| IpcRunStatus::from_core(s.status)),
+            status: data
+                .final_stats
+                .as_ref()
+                .map(|s| IpcRunStatus::from_core(s.status)),
         }
     }
 
@@ -324,7 +327,11 @@ impl RunSession {
             return Err(SessionError::OutOfBounds { x, y });
         }
         let board = data.board.as_mut().ok_or(SessionError::NoBoard)?;
-        let state = if alive { CellState::Alive } else { CellState::Dead };
+        let state = if alive {
+            CellState::Alive
+        } else {
+            CellState::Dead
+        };
         board.set(x as usize, y as usize, state);
         data.dirty = true;
         Ok(())
@@ -364,18 +371,12 @@ impl RunSession {
         Ok(())
     }
 
-    pub fn randomize(
-        &self,
-        seed: u64,
-        alive_cells_per_thousand: u16,
-    ) -> Result<(), SessionError> {
+    pub fn randomize(&self, seed: u64, alive_cells_per_thousand: u16) -> Result<(), SessionError> {
         let mut data = self.lock();
         require_setup(&data)?;
         let board = data.board.as_mut().ok_or(SessionError::NoBoard)?;
-        let init = RandomBoardInitializer::with_alive_cells_per_thousand(
-            seed,
-            alive_cells_per_thousand,
-        )?;
+        let init =
+            RandomBoardInitializer::with_alive_cells_per_thousand(seed, alive_cells_per_thousand)?;
         init.initialize(board)
             .expect("InMemoryBoard editor is infallible");
         data.dirty = true;
@@ -427,7 +428,10 @@ impl RunSession {
     /// rewind happens, so the worker can't trample the restored state
     /// with a stale `advance_one`.
     pub fn restart(&self) -> Result<(), SessionError> {
-        if !matches!(self.lock().mode, Mode::Paused | Mode::Playing | Mode::JumpingTo) {
+        if !matches!(
+            self.lock().mode,
+            Mode::Paused | Mode::Playing | Mode::JumpingTo
+        ) {
             return Err(SessionError::WrongMode {
                 current: self.lock().mode,
                 required: "Running",
@@ -492,11 +496,7 @@ impl RunSession {
         if was_at_max && new_total > data.iteration {
             data.final_stats = None;
             if data.stats.is_none() {
-                let last_alive = data
-                    .alive_history
-                    .last()
-                    .copied()
-                    .unwrap_or(0);
+                let last_alive = data.alive_history.last().copied().unwrap_or(0);
                 data.stats = Some(RunStatisticsCollector::starting_from(last_alive));
             }
         }
@@ -637,7 +637,11 @@ fn write_cells(board: &mut InMemoryBoard, bytes: &[u8]) {
     for y in 0..board.height() {
         for x in 0..w {
             let alive = bytes.get(y * w + x).copied().unwrap_or(0) != 0;
-            let state = if alive { CellState::Alive } else { CellState::Dead };
+            let state = if alive {
+                CellState::Alive
+            } else {
+                CellState::Dead
+            };
             board.set(x, y, state);
         }
     }

@@ -48,17 +48,14 @@ fn create_run_with_empty_source_yields_a_dead_board() {
 #[test]
 fn create_run_with_pattern_blinker_paints_three_alive_cells() {
     let s = Arc::new(RunSession::new());
-    s.create_run(
-        5,
-        5,
-        InitialSource::Pattern(PatternName::Blinker),
-        10,
-        None,
-    )
-    .unwrap();
+    s.create_run(5, 5, InitialSource::Pattern(PatternName::Blinker), 10, None)
+        .unwrap();
     let cells = s.board_payload().decoded_cells().unwrap();
     let alive: u64 = cells.iter().map(|&c| c as u64).sum();
-    assert!(alive >= 3, "blinker must place at least 3 alive cells, got {alive}");
+    assert!(
+        alive >= 3,
+        "blinker must place at least 3 alive cells, got {alive}"
+    );
 }
 
 #[test]
@@ -76,9 +73,21 @@ fn set_cell_paints_a_cell_and_marks_dirty() {
 fn paint_cells_applies_a_batch() {
     let s = fresh_session(4, 4, 5);
     let edits = vec![
-        CellEdit { x: 0, y: 0, alive: true },
-        CellEdit { x: 1, y: 1, alive: true },
-        CellEdit { x: 2, y: 2, alive: true },
+        CellEdit {
+            x: 0,
+            y: 0,
+            alive: true,
+        },
+        CellEdit {
+            x: 1,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 2,
+            y: 2,
+            alive: true,
+        },
     ];
     s.paint_cells(&edits).unwrap();
     let cells = s.board_payload().decoded_cells().unwrap();
@@ -146,9 +155,21 @@ fn advance_one_increments_iteration_and_updates_history() {
     let s = fresh_session(3, 3, 5);
     // Blinker pattern oscillates between horizontal and vertical rows.
     s.paint_cells(&[
-        CellEdit { x: 0, y: 1, alive: true },
-        CellEdit { x: 1, y: 1, alive: true },
-        CellEdit { x: 2, y: 1, alive: true },
+        CellEdit {
+            x: 0,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 1,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 2,
+            y: 1,
+            alive: true,
+        },
     ])
     .unwrap();
     s.start_run().unwrap();
@@ -179,9 +200,21 @@ fn advance_one_detects_extinction_and_finalises_stats() {
 fn advance_one_detects_max_iterations() {
     let s = fresh_session(3, 3, 2);
     s.paint_cells(&[
-        CellEdit { x: 0, y: 1, alive: true },
-        CellEdit { x: 1, y: 1, alive: true },
-        CellEdit { x: 2, y: 1, alive: true },
+        CellEdit {
+            x: 0,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 1,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 2,
+            y: 1,
+            alive: true,
+        },
     ])
     .unwrap();
     s.start_run().unwrap();
@@ -206,9 +239,21 @@ fn advance_after_completion_returns_error() {
 fn restart_restores_initial_snapshot_and_resets_iteration() {
     let s = fresh_session(3, 3, 10);
     s.paint_cells(&[
-        CellEdit { x: 0, y: 1, alive: true },
-        CellEdit { x: 1, y: 1, alive: true },
-        CellEdit { x: 2, y: 1, alive: true },
+        CellEdit {
+            x: 0,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 1,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 2,
+            y: 1,
+            alive: true,
+        },
     ])
     .unwrap();
     s.start_run().unwrap();
@@ -246,9 +291,21 @@ fn edit_board_returns_to_setup_and_drops_run_state() {
 fn extend_max_iterations_lifts_the_cap_and_clears_max_iter_status() {
     let s = fresh_session(3, 3, 1);
     s.paint_cells(&[
-        CellEdit { x: 0, y: 1, alive: true },
-        CellEdit { x: 1, y: 1, alive: true },
-        CellEdit { x: 2, y: 1, alive: true },
+        CellEdit {
+            x: 0,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 1,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 2,
+            y: 1,
+            alive: true,
+        },
     ])
     .unwrap();
     s.start_run().unwrap();
@@ -269,9 +326,21 @@ fn extend_max_iterations_rehydrates_stats_so_next_cap_hit_finalises() {
     // false forever and spinning the play worker.
     let s = fresh_session(3, 3, 1);
     s.paint_cells(&[
-        CellEdit { x: 0, y: 1, alive: true },
-        CellEdit { x: 1, y: 1, alive: true },
-        CellEdit { x: 2, y: 1, alive: true },
+        CellEdit {
+            x: 0,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 1,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 2,
+            y: 1,
+            alive: true,
+        },
     ])
     .unwrap();
     s.start_run().unwrap();
@@ -361,10 +430,7 @@ fn save_board_snapshot_writes_a_gol_file_and_round_trips() {
     s.set_cell(1, 1, true).unwrap();
     s.set_cell(2, 2, true).unwrap();
 
-    let tmp = env::temp_dir().join(format!(
-        "gol-desktop-test-{}.gol",
-        std::process::id(),
-    ));
+    let tmp = env::temp_dir().join(format!("gol-desktop-test-{}.gol", std::process::id(),));
     let _ = fs::remove_file(&tmp);
 
     s.save_board_snapshot(&tmp).unwrap();
@@ -378,7 +444,10 @@ fn save_board_snapshot_writes_a_gol_file_and_round_trips() {
 
     // Refuses to overwrite without explicit removal.
     let err = s.save_board_snapshot(&tmp).unwrap_err();
-    assert!(err.to_string().to_lowercase().contains("refusing to overwrite"));
+    assert!(err
+        .to_string()
+        .to_lowercase()
+        .contains("refusing to overwrite"));
 
     fs::remove_file(&tmp).ok();
 }

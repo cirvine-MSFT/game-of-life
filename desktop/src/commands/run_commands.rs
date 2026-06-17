@@ -64,10 +64,7 @@ pub fn extend_max_iterations(
 /// also disables the button outside Paused, but the IPC layer is the
 /// last line of defense in case the UI is bypassed.
 #[tauri::command]
-pub fn step(
-    app: AppHandle,
-    session: State<'_, Arc<RunSession>>,
-) -> Result<(), SessionError> {
+pub fn step(app: AppHandle, session: State<'_, Arc<RunSession>>) -> Result<(), SessionError> {
     {
         let info = session.info();
         if !matches!(info.mode, Mode::Paused) {

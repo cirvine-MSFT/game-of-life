@@ -13,11 +13,17 @@ use game_of_life_desktop_lib::ipc_types::{
 #[test]
 fn ipc_cell_state_collapses_transitional_variants_to_alive_or_dead() {
     assert_eq!(IpcCellState::from_core(CellState::Dead), IpcCellState::Dead);
-    assert_eq!(IpcCellState::from_core(CellState::Alive), IpcCellState::Alive);
+    assert_eq!(
+        IpcCellState::from_core(CellState::Alive),
+        IpcCellState::Alive
+    );
     // Transitional states are renderer-internal; once advance_generation
     // returns, only Dead/Alive remain, but we still want defined behaviour
     // if a snapshot ever carries one through.
-    assert_eq!(IpcCellState::from_core(CellState::Dying), IpcCellState::Dead);
+    assert_eq!(
+        IpcCellState::from_core(CellState::Dying),
+        IpcCellState::Dead
+    );
     assert_eq!(
         IpcCellState::from_core(CellState::Resurrecting),
         IpcCellState::Alive,
@@ -26,7 +32,9 @@ fn ipc_cell_state_collapses_transitional_variants_to_alive_or_dead() {
 
 #[test]
 fn board_payload_round_trips_through_base64() {
-    let cells: Vec<u8> = (0..2500).map(|i| if i % 3 == 0 { 1u8 } else { 0u8 }).collect();
+    let cells: Vec<u8> = (0..2500)
+        .map(|i| if i % 3 == 0 { 1u8 } else { 0u8 })
+        .collect();
     let payload = BoardPayload::from_bytes(50, 50, 12, &cells);
     let decoded = payload.decoded_cells().expect("base64 must round-trip");
     assert_eq!(decoded, cells);
@@ -110,8 +118,16 @@ fn initial_source_serialises_with_tag_and_value() {
 #[test]
 fn cell_edit_round_trips_through_serde() {
     let edits = vec![
-        CellEdit { x: 1, y: 2, alive: true },
-        CellEdit { x: 3, y: 4, alive: false },
+        CellEdit {
+            x: 1,
+            y: 2,
+            alive: true,
+        },
+        CellEdit {
+            x: 3,
+            y: 4,
+            alive: false,
+        },
     ];
     let json = serde_json::to_string(&edits).unwrap();
     let decoded: Vec<CellEdit> = serde_json::from_str(&json).unwrap();

@@ -81,11 +81,7 @@ pub fn save_board_snapshot(
     let p = PathBuf::from(&path);
     if overwrite && p.exists() {
         std::fs::remove_file(&p).map_err(|e| {
-            SessionError::SaveBoardSnapshot(format!(
-                "Failed to overwrite {}: {}",
-                p.display(),
-                e
-            ))
+            SessionError::SaveBoardSnapshot(format!("Failed to overwrite {}: {}", p.display(), e))
         })?;
     }
     session.save_board_snapshot(&p)?;
