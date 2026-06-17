@@ -1,0 +1,123 @@
+name: Desktop CI
+
+# Lives in its own workflow file so the existing `ci.yml` stays
+# bit-identical to main. Triggers only when files inside `desktop/` or
+# this workflow itself change, which keeps PRs that touch only the
+# core library from paying Tauri's compile-time cost.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-ci.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-ci.yml'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  desktop-rust-checks:
+    name: Desktop Rust checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Pin ubuntu-22.04 here to match the release pipeline's glibc
+        # 2.35 floor — running clippy/test on 24.04 while shipping
+        # against 22.04 would risk catching different lints over time.
+        os: [windows-latest, ubuntu-22.04]
+    defaults:
+      run:
+        working-directory: desktop
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install Tauri Linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libsoup-3.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            build-essential \
+            pkg-config
+        shell: bash
+        working-directory: .
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop -> target
+
+      - name: Provide placeholder UI dist so generate_context! succeeds
+        # The Rust crate validates the frontendDist path at compile
+        # time. CI checks shouldn't have to build the full Vite bundle
+        # just to run clippy, so we stub the directory with an empty
+        # index.html. The full bundle is built in the desktop-frontend
+        # job below.
+        run: |
+          mkdir -p ui/dist
+          echo "<!doctype html><title>ci placeholder</title>" > ui/dist/index.html
+        shell: bash
+
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      - name: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo test --verbose
+        run: cargo test --verbose
+
+      - name: cargo check
+        run: cargo check
+
+  desktop-frontend-checks:
+    name: Desktop frontend checks
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: desktop/ui
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: desktop/ui/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: npm run lint
+        run: npm run lint
+
+      - name: npm run typecheck
+        run: npm run typecheck
+
+      - name: npm run test
+        run: npm run test
+
+      - name: npm run build
+        run: npm run build

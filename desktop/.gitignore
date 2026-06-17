@@ -1,0 +1,22 @@
+# Rust / Cargo
+/target/
+
+# Tauri build outputs
+/src-tauri/target/
+/gen/
+
+# Frontend
+/ui/node_modules/
+/ui/dist/
+/ui/.vite/
+/ui/coverage/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Local environment overrides
+.env
+.env.local

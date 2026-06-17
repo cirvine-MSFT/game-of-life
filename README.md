@@ -245,3 +245,84 @@ For each generation:
 
 See [docs/product-code.md](docs/product-code.md) for product module conventions and [docs/testing.md](docs/testing.md) for test organization, `edge_case_` labels, and `negative_` labels.
 For the persistence file format, integrity model, and CLI verbs, see the **Persistence** section in [docs/design.md](docs/design.md).
+
+## Desktop visualizer (preview)
+
+A Tauri v2 desktop app lives in [`desktop/`](desktop/) and wraps the existing
+library with an interactive UI: pick a board size, click/drag to paint cells
+in Setup mode, then watch the simulation evolve with Play / Pause / Step /
+Restart / Jump-to-N controls and a live stats panel.
+
+The app is its own independent Cargo workspace root so the core crate's
+`Cargo.toml`, `Cargo.lock`, and CI workflow stay untouched.
+
+See [`docs/desktop-app.md`](docs/desktop-app.md) for the architecture, IPC
+surface, and state-machine details.
+
+### Build the desktop app locally
+
+```powershell
+# Install the Tauri CLI once.
+cargo install tauri-cli --version "^2.0" --locked
+
+# Install frontend dependencies.
+cd desktop\ui
+npm ci
+cd ..
+
+# Run in dev mode (Vite + Tauri together). `--no-watch` skips Tauri's
+# Rust-source watcher, which currently picks up unrelated changes inside
+# `desktop/ui/node_modules/` and triggers spurious rebuilds. The Vite
+# server still hot-reloads the frontend.
+cargo tauri dev --no-watch
+
+# Or produce a release bundle (NSIS .exe + .msi on Windows).
+cargo tauri build
+```
+
+On Linux you'll need the Tauri v2 runtime packages first:
+
+```bash
+sudo apt-get install -y \
+  libwebkit2gtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev \
+  librsvg2-dev libssl-dev build-essential pkg-config
+```
+
+## Releases
+
+Production binaries are produced by [`.github/workflows/release.yml`](.github/workflows/release.yml),
+triggered by pushing a `v*` tag (e.g. `v0.2.0`). Each release attaches six
+artifacts to a **draft** GitHub Release for human review before publication:
+
+| Platform | CLI | Desktop installer | Desktop alternate |
+|---|---|---|---|
+| Windows x86_64 | `game-of-life-cli-<version>-windows-x86_64.exe` | `game-of-life-desktop-<version>-windows-x86_64.exe` (NSIS installer) | `game-of-life-desktop-<version>-windows-x86_64.msi` (MSI installer) |
+| Linux x86_64 | `game-of-life-cli-<version>-linux-x86_64` | `game-of-life-desktop-<version>-linux-x86_64.AppImage` | `game-of-life-desktop-<version>-linux-x86_64.deb` |
+
+Plus `release-notes-inputs.txt` (raw `git log` + `diff --stat`) for
+auditability — the release notes themselves are drafted by GitHub Models
+(`actions/ai-inference`, using the workflow's `GITHUB_TOKEN` with the
+`models: read` scope; no PAT or Copilot seat is consumed). The prompt
+template lives in [`.github/release-notes-prompt.md`](.github/release-notes-prompt.md)
+so tone and structure are code-reviewable.
+
+### Known issues with the unsigned Windows installers
+
+The Windows `.exe` and `.msi` are **not code-signed** in v1. The first time
+you run them, Windows SmartScreen will show **"Windows protected your PC"**.
+Click **More info** → **Run anyway** to launch. Subsequent runs do not
+re-prompt.
+
+### AppImage glibc floor
+
+The AppImage is built on `ubuntu-22.04` (glibc 2.35), so it runs on Ubuntu
+22.04+, Debian 12+, Fedora 36+, and equivalent. Older distributions need to
+build from source.
+
+### `.gol` round-trip caveats
+
+`.gol` files written by the desktop app round-trip through the CLI's
+`--replay` and `--continue` for **completed** runs only. Mid-run "Save
+board snapshot" files are board snapshots (no run statistics) and
+manually-edited boards have a `manual` provenance that does not map onto a
+CLI `--initial-board` source.
