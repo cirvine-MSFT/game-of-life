@@ -578,6 +578,28 @@ impl RunSession {
 
         Ok(tick)
     }
+
+    /// Saves the *current* board (whatever iteration we're on) as a
+    /// standalone `GOL-BOARD-SNAPSHOT v1` file at `path`. Mirrors the
+    /// CLI's `--save-board` escape hatch so users can persist a board
+    /// of interest without waiting for the run to terminate.
+    ///
+    /// Wraps `write_board_snapshot`, which refuses to overwrite — the
+    /// frontend is expected to handle overwrite confirmation by
+    /// removing the file first if the user OK's it.
+    pub fn save_board_snapshot(&self, path: &std::path::Path) -> Result<(), SessionError> {
+        let board = {
+            let data = self.lock();
+            data.board.clone().ok_or(SessionError::NoBoard)?
+        };
+        let snapshot = BoardSnapshot::for_board(board);
+        write_board_snapshot(path, &snapshot).map_err(|e| match e {
+            BoardSnapshotWriteError::OutputExists { path } => SessionError::SaveBoardSnapshot(
+                format!("Refusing to overwrite existing file '{}'", path.display()),
+            ),
+            BoardSnapshotWriteError::Io(io) => SessionError::SaveBoardSnapshot(io.to_string()),
+        })
+    }
 }
 
 fn require_setup(data: &SessionData) -> Result<(), SessionError> {
@@ -687,29 +709,5 @@ impl serde::Serialize for SessionError {
         state.serialize_field("kind", kind)?;
         state.serialize_field("message", &self.to_string())?;
         state.end()
-    }
-}
-
-impl RunSession {
-    /// Saves the *current* board (whatever iteration we're on) as a
-    /// standalone `GOL-BOARD-SNAPSHOT v1` file at `path`. Mirrors the
-    /// CLI's `--save-board` escape hatch so users can persist a board
-    /// of interest without waiting for the run to terminate.
-    ///
-    /// Wraps `write_board_snapshot`, which refuses to overwrite — the
-    /// frontend is expected to handle overwrite confirmation by
-    /// removing the file first if the user OK's it.
-    pub fn save_board_snapshot(&self, path: &std::path::Path) -> Result<(), SessionError> {
-        let board = {
-            let data = self.lock();
-            data.board.clone().ok_or(SessionError::NoBoard)?
-        };
-        let snapshot = BoardSnapshot::for_board(board);
-        write_board_snapshot(path, &snapshot).map_err(|e| match e {
-            BoardSnapshotWriteError::OutputExists { path } => SessionError::SaveBoardSnapshot(
-                format!("Refusing to overwrite existing file '{}'", path.display()),
-            ),
-            BoardSnapshotWriteError::Io(io) => SessionError::SaveBoardSnapshot(io.to_string()),
-        })
     }
 }

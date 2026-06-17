@@ -21,9 +21,19 @@ use crate::events::{BOARD_TICK, JUMP_PROGRESS, RUN_COMPLETED, SESSION_CHANGED};
 use crate::ipc_types::{BoardTick, IpcRunStatus, JumpProgress, Mode, RunCompleted};
 use crate::session::{RunSession, SessionError};
 
-const MIN_GPS: u16 = 1;
-const MAX_GPS: u16 = 240;
+/// Lower bound on the play loop's generations-per-second clamp.
+pub const MIN_GPS: u16 = 1;
+/// Upper bound on the play loop's generations-per-second clamp.
+/// Picked so the period (1 / MAX_GPS seconds) stays comfortably above
+/// typical IPC + canvas-redraw latency.
+pub const MAX_GPS: u16 = 240;
 const JUMP_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Clamps a caller-supplied gps value into the supported range. Public
+/// so integration tests can assert the bounds.
+pub fn clamp_gps(raw: u16) -> u16 {
+    raw.clamp(MIN_GPS, MAX_GPS)
+}
 
 #[tauri::command]
 pub fn start_run(session: State<'_, Arc<RunSession>>) -> Result<(), SessionError> {
@@ -136,10 +146,6 @@ pub async fn jump_to(
         run_jump_loop(app_for_task, cloned, target_iteration).await;
     });
     Ok(())
-}
-
-fn clamp_gps(raw: u16) -> u16 {
-    raw.clamp(MIN_GPS, MAX_GPS)
 }
 
 async fn run_play_loop(app: AppHandle, session: Arc<RunSession>, gps: u16) {
