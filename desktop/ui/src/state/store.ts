@@ -309,10 +309,7 @@ export const useStore = create<AppState>((set, get) => ({
     // Lazy-import so the dialog plugin is only loaded when the user
     // actually triggers a save. Keeps the initial JS bundle smaller
     // and avoids touching the Tauri runtime on smoke tests.
-    const [{ save }, { ask }] = await Promise.all([
-      import("@tauri-apps/plugin-dialog"),
-      import("@tauri-apps/plugin-dialog"),
-    ]);
+    const { save, ask } = await import("@tauri-apps/plugin-dialog");
     const session = get().session;
     if (!session) {
       return;
