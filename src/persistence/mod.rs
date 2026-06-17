@@ -19,11 +19,13 @@ pub mod magic;
 pub mod parser;
 pub mod run_id;
 pub mod run_record;
+pub mod scratch;
 pub mod timestamps;
 
 pub use board_snapshot::{
     read_board_snapshot, read_board_snapshot_default, suggest_memory_override,
-    validate_loaded_board_size, write_board_snapshot, write_board_snapshot_to, BoardSnapshot,
+    validate_loaded_board_size, write_board_snapshot, write_board_snapshot_to,
+    write_streaming_board_snapshot, write_streaming_board_snapshot_to, BoardSnapshot,
     BoardSnapshotReadError, BoardSnapshotWriteError, LoadedBoardSizeError, SuggestedMemoryDisplay,
     SuggestedMemoryOverride, BOARD_BLOCK_LABEL, SUGGESTED_MEMORY_OVERRIDE_FLOOR_BYTES,
 };

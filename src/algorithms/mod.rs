@@ -2,6 +2,7 @@
 
 mod board_initializer;
 mod board_updater;
+mod cell_rule;
 mod centered_blinker_initializer;
 mod demo_board_initializer;
 mod fully_alive_initializer;
@@ -10,6 +11,7 @@ mod random_board_initializer;
 
 pub use board_initializer::BoardInitializer;
 pub use board_updater::BoardUpdater;
+pub use cell_rule::CellRule;
 pub use centered_blinker_initializer::{BlinkerBoardInitializer, CenteredBlinkerInitializer};
 pub use demo_board_initializer::DemoBoardInitializer;
 pub use fully_alive_initializer::FullyAliveInitializer;

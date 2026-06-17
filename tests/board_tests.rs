@@ -95,6 +95,69 @@ mod normal_tests {
     }
 }
 
+mod cell_state_helpers {
+    use super::*;
+
+    #[test]
+    fn is_originally_alive_treats_alive_and_dying_as_live() {
+        assert!(CellState::Alive.is_originally_alive());
+        assert!(CellState::Dying.is_originally_alive());
+        assert!(!CellState::Dead.is_originally_alive());
+        assert!(!CellState::Resurrecting.is_originally_alive());
+    }
+
+    #[test]
+    fn normalized_converts_transitional_to_final() {
+        assert_eq!(CellState::Alive.normalized(), CellState::Alive);
+        assert_eq!(CellState::Dead.normalized(), CellState::Dead);
+        assert_eq!(CellState::Dying.normalized(), CellState::Dead);
+        assert_eq!(CellState::Resurrecting.normalized(), CellState::Alive);
+    }
+
+    #[test]
+    fn from_transition_encodes_was_and_will_correctly() {
+        assert_eq!(
+            CellState::from_transition(true, true),
+            CellState::Alive,
+            "alive cell that stays alive is Alive"
+        );
+        assert_eq!(
+            CellState::from_transition(true, false),
+            CellState::Dying,
+            "alive cell becoming dead is Dying"
+        );
+        assert_eq!(
+            CellState::from_transition(false, true),
+            CellState::Resurrecting,
+            "dead cell becoming alive is Resurrecting"
+        );
+        assert_eq!(
+            CellState::from_transition(false, false),
+            CellState::Dead,
+            "dead cell that stays dead is Dead"
+        );
+    }
+
+    #[test]
+    fn from_transition_round_trips_through_is_originally_alive() {
+        for &was_alive in &[true, false] {
+            for &will_be_alive in &[true, false] {
+                let encoded = CellState::from_transition(was_alive, will_be_alive);
+                assert_eq!(
+                    encoded.is_originally_alive(),
+                    was_alive,
+                    "encoded transitional state must report its original liveness"
+                );
+                assert_eq!(
+                    encoded.normalized() == CellState::Alive,
+                    will_be_alive,
+                    "normalizing the encoded state must yield the rule's verdict"
+                );
+            }
+        }
+    }
+}
+
 mod edge_case_tests {
     use super::*;
 

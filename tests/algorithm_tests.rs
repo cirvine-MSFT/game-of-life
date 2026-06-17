@@ -274,6 +274,77 @@ mod normal_tests {
     }
 }
 
+mod rule_redesign_tests {
+    use super::*;
+    use game_of_life::CellRule;
+
+    /// Reference implementation of standard Conway B3/S23, written from scratch
+    /// against the rule's contract. Used to validate `InPlaceTransitionalUpdater`'s
+    /// `CellRule` impl.
+    fn reference_b3s23(currently_alive: bool, live_neighbors: usize) -> bool {
+        matches!(
+            (currently_alive, live_neighbors),
+            (true, 2) | (true, 3) | (false, 3)
+        )
+    }
+
+    #[test]
+    fn in_place_transitional_updater_matches_b3s23_for_every_input() {
+        let rule = InPlaceTransitionalUpdater;
+        for &currently_alive in &[true, false] {
+            for live_neighbors in 0..=8usize {
+                assert_eq!(
+                    rule.next_state(currently_alive, live_neighbors),
+                    reference_b3s23(currently_alive, live_neighbors),
+                    "rule disagrees with B3/S23 at \
+                     (currently_alive={currently_alive}, live_neighbors={live_neighbors})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn advance_with_rule_matches_legacy_advance_generation() {
+        let patterns: &[&[&str]] = &[
+            &["...", "###", "..."],
+            &[".#.", ".#.", ".#."],
+            &["##", "##"],
+            &["#..", ".#.", "..#"],
+            &["....", ".##.", ".##.", "...."],
+            &["#####", ".....", "#...#", ".....", "#####"],
+        ];
+
+        for pattern in patterns {
+            let mut via_rule = board_from_grid(pattern);
+            let mut via_legacy = board_from_grid(pattern);
+
+            via_rule
+                .advance_with_rule(&InPlaceTransitionalUpdater)
+                .expect("in-memory board updates are infallible");
+            via_legacy.advance_generation();
+
+            assert_eq!(
+                via_rule, via_legacy,
+                "advance_with_rule and advance_generation must agree for pattern {pattern:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn board_updater_advance_generation_delegates_to_rule_path() {
+        // Confirm the old BoardUpdater entry point still works end-to-end via
+        // the per-impl delegation to board.advance_with_rule.
+        let mut board = board_from_grid(&["...", "###", "..."]);
+
+        InPlaceTransitionalUpdater
+            .advance_generation(&mut board)
+            .expect("in-memory board updates are infallible");
+
+        let expected = board_from_grid(&[".#.", ".#.", ".#."]);
+        assert_eq!(board, expected);
+    }
+}
+
 mod edge_case_tests {
     use super::*;
 

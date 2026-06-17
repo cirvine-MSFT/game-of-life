@@ -41,5 +41,8 @@ yarn-error.log*
 
 /target
 
+# MSVC debug symbols sometimes left at repo root during local debug builds
+*.pdb
+
 # Game of Life run records (auto-saved by default into ./runs/)
 /runs/

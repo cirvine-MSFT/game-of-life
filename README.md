@@ -101,6 +101,36 @@ By default, every successful run auto-saves a record into `./runs/` with a filen
 | `--runs-dir <DIR>` | Save run records into this directory; created if missing. | `./runs` |
 | `--save-run <PATH>` | Save the run record to this explicit path (no auto-naming). Overrides `--runs-dir`. | N/A |
 | `--no-save` | Suppress saving the run record entirely. | N/A |
+| `--save-board <PATH>` | Save the final board as a standalone `.gol-snapshot` file. Works in both in-memory and streaming modes. In streaming mode this is the primary way to persist the final state (see below). | N/A |
+
+#### Streaming (large boards)
+
+When `--initial-board` (any of `demo`, `alive`, `blinker`, `random`) is asked
+to run on a board larger than `--max-board-memory`, the run **auto-promotes**
+to a file-streaming backend instead of failing. The simulation streams the
+board through a binary scratch file on disk while respecting the memory cap.
+
+```powershell
+# 100x100 board (~10 KB) on a 1 KB cap: auto-promotes to streaming.
+.\target\release\game-of-life.exe `
+    --board-size 100x100 `
+    --max-board-memory 1KB `
+    --initial-board blinker `
+    --max-iterations 5 `
+    --no-save `
+    --save-board final.gol-snapshot
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--working-dir <PATH>` | Directory for the streaming scratch file. Scratch files are auto-deleted on successful completion and **left on disk on any failure** for inspection. Only used when the run auto-promotes to streaming mode. | OS temp dir |
+
+Streaming-mode limitations (deferred to follow-up PRs):
+
+- Run-record save is not yet supported for streaming-sized boards. If `--save-run` / `--runs-dir` / the default auto-save is in effect, the run still completes successfully and a warning is printed; use `--save-board <PATH>` instead, or raise `--max-board-memory` to keep the board in memory.
+- `--load-board` and `--continue` keep the existing in-memory path; loading a snapshot too large for the memory budget still fails with the same `requires N bytes` error as before.
+
+See [docs/design.md](docs/design.md#streaming-board-for-very-large-boards) for the streaming algorithm and the on-disk scratch format.
 
 #### Integrity
 
