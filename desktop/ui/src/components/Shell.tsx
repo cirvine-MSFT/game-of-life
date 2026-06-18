@@ -3,7 +3,7 @@ import { Body1, Button, Caption1, makeStyles, tokens } from "@fluentui/react-com
 
 import { BoardCanvas } from "./BoardCanvas";
 import { PlaybackControls } from "./PlaybackControls";
-import { StatsPanel } from "./StatsPanel";
+import { ToolsPanel } from "./ToolsPanel";
 import { useStore, type ThemeChoice } from "../state/store";
 
 const useStyles = makeStyles({
@@ -62,7 +62,7 @@ const paletteNameFor = (theme: ThemeChoice): "light" | "dark" | "highContrast" =
 /**
  * Root layout. Three rows (toolbar / body / status bar); the body
  * splits into the centered BoardCanvas and a collapsible right-side
- * StatsPanel.
+ * tools panel.
  *
  * `connect()` is called once on mount. The store guards against
  * double-subscription so React 19 strict-mode double-mounting is safe.
@@ -99,7 +99,7 @@ export const Shell = () => {
         <div className={styles.canvas}>
           <BoardCanvas paletteName={paletteNameFor(theme)} />
         </div>
-        <StatsPanel />
+        <ToolsPanel />
       </div>
       <div className={styles.statusBar}>
         <Caption1>
