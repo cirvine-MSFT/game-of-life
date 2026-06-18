@@ -68,4 +68,20 @@ describe("SessionInfo shape", () => {
     };
     expect(info.status).toBe("extinct");
   });
+
+  it("accepts a completed stable session", () => {
+    const info: SessionInfo = {
+      mode: "paused",
+      iteration: 1,
+      width: 2,
+      height: 2,
+      maxIterations: 10,
+      savePath: null,
+      dirty: false,
+      completed: true,
+      jumpTarget: null,
+      status: "stable",
+    };
+    expect(info.status).toBe("stable");
+  });
 });

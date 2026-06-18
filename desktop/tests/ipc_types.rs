@@ -82,6 +82,14 @@ fn run_statistics_conversion_preserves_every_field() {
 }
 
 #[test]
+fn stable_run_status_converts_to_ipc_status() {
+    assert_eq!(
+        IpcRunStatus::from_core(RunStatus::Stable),
+        IpcRunStatus::Stable
+    );
+}
+
+#[test]
 fn session_info_round_trips_through_json() {
     let info = SessionInfo {
         mode: Mode::Playing,

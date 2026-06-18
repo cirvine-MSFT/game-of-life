@@ -140,6 +140,48 @@ mod normal_tests {
         assert!(stdout.contains("Initial board: random"));
         assert!(stdout.contains("Final board state:"));
     }
+
+    #[test]
+    fn stable_run_stops_before_max_iterations_and_reports_known_patterns() {
+        let output = run_cli(&[
+            "--board-size",
+            "2x2",
+            "--max-iterations",
+            "10",
+            "--initial-board",
+            "alive",
+            "--no-save",
+        ]);
+
+        assert!(output.status.success());
+        assert!(stderr(&output).is_empty());
+
+        let stdout = stdout(&output);
+        assert!(stdout.contains("Stable state reached at generation 1"));
+        assert!(stdout.contains("Known still-life patterns: block=1"));
+        assert!(stdout.contains("Simulation complete: 1 iterations (stable)"));
+    }
+
+    #[test]
+    fn oscillator_run_does_not_stop_as_stable() {
+        let output = run_cli(&[
+            "--board-size",
+            "5x5",
+            "--max-iterations",
+            "2",
+            "--initial-board",
+            "blinker",
+            "--no-save",
+        ]);
+
+        assert!(output.status.success());
+        assert!(stderr(&output).is_empty());
+
+        let stdout = stdout(&output);
+        assert!(!stdout.contains("Stable state reached"));
+        assert!(!stdout.contains("Known still-life patterns:"));
+        assert!(stdout.contains("Simulation complete: 2 iterations (max_iterations)"));
+    }
 }
 
 mod edge_case_tests {

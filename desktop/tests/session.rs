@@ -197,6 +197,44 @@ fn advance_one_detects_extinction_and_finalises_stats() {
 }
 
 #[test]
+fn advance_one_detects_stability_and_finalises_stats() {
+    let s = fresh_session(2, 2, 10);
+    s.paint_cells(&[
+        CellEdit {
+            x: 0,
+            y: 0,
+            alive: true,
+        },
+        CellEdit {
+            x: 1,
+            y: 0,
+            alive: true,
+        },
+        CellEdit {
+            x: 0,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 1,
+            y: 1,
+            alive: true,
+        },
+    ])
+    .unwrap();
+    s.start_run().unwrap();
+
+    let tick = s.advance_one().unwrap();
+
+    assert_eq!(tick.alive, 4);
+    let info = s.info();
+    assert!(info.completed);
+    assert_eq!(info.iteration, 1);
+    assert_eq!(info.status, Some(IpcRunStatus::Stable));
+    assert_eq!(info.mode, Mode::Paused);
+}
+
+#[test]
 fn advance_one_detects_max_iterations() {
     let s = fresh_session(3, 3, 2);
     s.paint_cells(&[

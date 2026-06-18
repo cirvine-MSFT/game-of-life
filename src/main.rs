@@ -17,14 +17,17 @@ use game_of_life::persistence::{
     RunId, RunRecord, RunRecordConfig, RunRecordReadError, RunRecordResult, RunRecordWriteError,
     SCHEMA_VERSION, TOOL_VERSION,
 };
-use game_of_life::stats::{run_statistics::RunStatus, AdvanceOutcome, RunStatisticsCollector};
+use game_of_life::stats::{
+    run_statistics::RunStatus, terminal_status_for_outcome, AdvanceOutcome, RunStatistics,
+    RunStatisticsCollector,
+};
 use game_of_life::{
-    parse_cli_args, BlinkerBoardInitializer, BoardEditor, BoardInitializer, BoardSize,
-    BoardUpdater, BoardView, CellCoordinate, CellState, CliCommand, DemoBoardInitializer,
-    ExtractBoardConfig, FullyAliveInitializer, InMemoryBoard, InMemoryBoardCreationError,
-    InPlaceTransitionalUpdater, InitialBoardSource, InitialBoardSpec, IntegrityMode, LoadFrom,
-    RandomBoardInitializer, ReplayConfig, SaveSettings, SimulationConfig, StreamingBoard,
-    StreamingBoardCreationError, StreamingBoardParams,
+    detect_known_still_life_patterns, parse_cli_args, BlinkerBoardInitializer, BoardEditor,
+    BoardInitializer, BoardSize, BoardUpdater, BoardView, CellCoordinate, CellState, CliCommand,
+    DemoBoardInitializer, ExtractBoardConfig, FullyAliveInitializer, InMemoryBoard,
+    InMemoryBoardCreationError, InPlaceTransitionalUpdater, InitialBoardSource, InitialBoardSpec,
+    IntegrityMode, LoadFrom, RandomBoardInitializer, ReplayConfig, SaveSettings, SimulationConfig,
+    StreamingBoard, StreamingBoardCreationError, StreamingBoardParams,
 };
 
 const HELP_TEXT: &str = concat!(
@@ -280,26 +283,22 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
     let initial_alive_count = count_alive(&board);
     let initial_board_for_record = board.clone();
     let mut collector = RunStatisticsCollector::starting_from(initial_alive_count);
-    let mut early_stop_extinct = initial_alive_count == 0;
+    let mut terminal_status = (initial_alive_count == 0).then_some(RunStatus::Extinct);
     let started = Instant::now();
     for _ in 0..max_iterations {
-        if early_stop_extinct {
+        if terminal_status.is_some() {
             break;
         }
         let outcome: AdvanceOutcome = updater
             .advance_generation(&mut board)
             .expect("in-memory board updates are infallible");
         collector.record(outcome);
-        if outcome.alive_count == 0 {
-            early_stop_extinct = true;
+        if let Some(status) = terminal_status_for_outcome(outcome) {
+            terminal_status = Some(status);
         }
     }
     let wall_time_ms = started.elapsed().as_millis() as u64;
-    let status = if early_stop_extinct {
-        game_of_life::stats::run_statistics::RunStatus::Extinct
-    } else {
-        game_of_life::stats::run_statistics::RunStatus::MaxIterations
-    };
+    let status = terminal_status.unwrap_or(RunStatus::MaxIterations);
     let stats = collector.finalize(status);
 
     println!("Game of Life");
@@ -312,6 +311,8 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
         config.initial_board.record_label(),
         initial_alive_count
     );
+    print_terminal_status_message(&stats);
+    print_still_life_pattern_summary(&board, &stats);
     println!("Final board state:");
     print!("{board}");
     println!(
@@ -420,10 +421,10 @@ fn run_streaming_simulation(config: SimulationConfig) -> Result<(), RunSimulatio
     let max_iterations = config.effective_max_iterations();
     let updater = InPlaceTransitionalUpdater;
     let mut collector = RunStatisticsCollector::starting_from(initial_alive_count);
-    let mut early_stop_extinct = initial_alive_count == 0;
+    let mut terminal_status = (initial_alive_count == 0).then_some(RunStatus::Extinct);
     let started = Instant::now();
     for _ in 0..max_iterations {
-        if early_stop_extinct {
+        if terminal_status.is_some() {
             break;
         }
         let outcome: AdvanceOutcome =
@@ -434,16 +435,12 @@ fn run_streaming_simulation(config: SimulationConfig) -> Result<(), RunSimulatio
                     source: e,
                 })?;
         collector.record(outcome);
-        if outcome.alive_count == 0 {
-            early_stop_extinct = true;
+        if let Some(status) = terminal_status_for_outcome(outcome) {
+            terminal_status = Some(status);
         }
     }
     let wall_time_ms = started.elapsed().as_millis() as u64;
-    let status = if early_stop_extinct {
-        RunStatus::Extinct
-    } else {
-        RunStatus::MaxIterations
-    };
+    let status = terminal_status.unwrap_or(RunStatus::MaxIterations);
     let stats = collector.finalize(status);
 
     println!("Game of Life (streaming mode)");
@@ -464,6 +461,7 @@ fn run_streaming_simulation(config: SimulationConfig) -> Result<(), RunSimulatio
         config.initial_board.record_label(),
         initial_alive_count
     );
+    print_terminal_status_message(&stats);
     println!(
         "Simulation complete: {} iterations ({})",
         stats.iterations_run,
@@ -718,6 +716,47 @@ fn count_alive(board: &InMemoryBoard) -> u64 {
     alive
 }
 
+fn print_terminal_status_message(stats: &RunStatistics) {
+    if matches!(stats.status, RunStatus::Stable) {
+        println!(
+            "Stable state reached at generation {}",
+            stats.iterations_run
+        );
+    }
+}
+
+fn print_still_life_pattern_summary(board: &InMemoryBoard, stats: &RunStatistics) {
+    if !matches!(stats.status, RunStatus::Stable) || stats.final_alive_count == 0 {
+        return;
+    }
+
+    let summary = detect_known_still_life_patterns(board)
+        .expect("in-memory board pattern detection is infallible");
+    if summary.has_known_patterns() {
+        let known = summary
+            .counts
+            .iter()
+            .map(|entry| format!("{}={}", entry.pattern.as_str(), entry.count))
+            .collect::<Vec<_>>()
+            .join(", ");
+        if summary.unknown_components == 0 {
+            println!("Known still-life patterns: {known}");
+        } else {
+            println!(
+                "Known still-life patterns: {known}; unknown stable components={}",
+                summary.unknown_components
+            );
+        }
+    } else if summary.unknown_components == 0 {
+        println!("Known still-life patterns: none");
+    } else {
+        println!(
+            "Known still-life patterns: none; unknown stable components={}",
+            summary.unknown_components
+        );
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_run_record(
     run_id: RunId,
@@ -887,23 +926,23 @@ fn replay(config: &ReplayConfig) -> Result<ReplayOutcome, ReplayError> {
     // Re-execute.
     let updater = InPlaceTransitionalUpdater;
     let mut collector = RunStatisticsCollector::starting_from(count_alive(&board));
-    let mut iterations_executed = 0u64;
+    let stop_on_stability = record.result.status == RunStatus::Stable.as_str();
+    let mut terminal_status = (collector.final_alive_count() == 0).then_some(RunStatus::Extinct);
     for _ in 0..record.config.max_iterations {
-        if collector.final_alive_count() == 0 {
+        if terminal_status.is_some() {
             break;
         }
         let outcome = updater
             .advance_generation(&mut board)
             .expect("in-memory board updates are infallible");
         collector.record(outcome);
-        iterations_executed += 1;
+        match terminal_status_for_outcome(outcome) {
+            Some(RunStatus::Stable) if !stop_on_stability => {}
+            Some(status) => terminal_status = Some(status),
+            None => {}
+        }
     }
-    let was_extinct = collector.final_alive_count() == 0;
-    let recomputed = collector.finalize(if was_extinct {
-        game_of_life::stats::run_statistics::RunStatus::Extinct
-    } else {
-        game_of_life::stats::run_statistics::RunStatus::MaxIterations
-    });
+    let recomputed = collector.finalize(terminal_status.unwrap_or(RunStatus::MaxIterations));
 
     if board != record.final_board {
         diffs.push("final board differs".to_string());
@@ -939,8 +978,6 @@ fn replay(config: &ReplayConfig) -> Result<ReplayOutcome, ReplayError> {
             record.result.final_alive_count, recomputed.final_alive_count
         ));
     }
-    let _ = iterations_executed; // executed count is captured inside `recomputed`.
-
     if diffs.is_empty() {
         Ok(ReplayOutcome::Match)
     } else {

@@ -16,13 +16,13 @@ pub struct RunStatistics {
     pub status: RunStatus,
 }
 
-/// Coarse-grained outcome label written to the run record. Reserved future
-/// values (`stable`, `cyclic`) are recognized by the reader but never emitted
-/// by this version of the writer.
+/// Coarse-grained outcome label written to the run record. `Cyclic` remains a
+/// reserved reader value; period-greater-than-1 detection is a future feature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStatus {
     MaxIterations,
     Extinct,
+    Stable,
 }
 
 impl RunStatus {
@@ -30,7 +30,18 @@ impl RunStatus {
         match self {
             RunStatus::MaxIterations => "max_iterations",
             RunStatus::Extinct => "extinct",
+            RunStatus::Stable => "stable",
         }
+    }
+}
+
+pub fn terminal_status_for_outcome(outcome: AdvanceOutcome) -> Option<RunStatus> {
+    if outcome.alive_count == 0 {
+        Some(RunStatus::Extinct)
+    } else if outcome.is_stable() {
+        Some(RunStatus::Stable)
+    } else {
+        None
     }
 }
 

@@ -6,7 +6,7 @@
 
 export type Mode = "setup" | "paused" | "playing" | "jumpingTo";
 
-export type IpcRunStatus = "maxIterations" | "extinct";
+export type IpcRunStatus = "maxIterations" | "extinct" | "stable";
 
 export type PatternName = "demo" | "blinker" | "fullyAlive";
 

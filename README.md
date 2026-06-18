@@ -74,6 +74,10 @@ cargo build --release
 
 The console app prints concise run information and the final board state only. Per-generation board output is intentionally omitted for now to keep runs readable.
 
+Runs stop early when they become extinct or when a completed generation has no births and no deaths. The latter is a fixed-point still-life state, reported as `stable`; repeating cycles such as blinkers still run to `--max-iterations` unless they become extinct. A fully dead board cannot come back alive under Conway's B3/S23 rule because births require exactly three live neighbors.
+
+For in-memory stable runs, the summary also reports known still-life components it can identify: block, beehive, loaf, boat, and tub. This catalog is informational only; unknown stable components do not affect stable-state detection.
+
 ### Command-line options
 
 #### Run options
@@ -217,6 +221,7 @@ To continue a run for more generations (with full provenance recorded):
   2. **Normalize Pass**: Convert Dying → Dead and Resurrecting → Alive
 - **Neighbor Counting**: Alive and Dying treated as originally live; Dead and Resurrecting treated as originally dead
 - **Result**: After generation, board contains only Dead and Alive states
+- **Early Stop**: Extinction stops immediately. Fixed-point still lifes stop when a completed generation reports zero births and zero deaths; oscillators/cycles are not classified as stable in this change.
 - **Configuration**: CLI options select board size, iteration count, memory budget, and initial board source; `demo` remains deterministic while `random` generates a fresh random board each run
 
 ### Architecture diagram

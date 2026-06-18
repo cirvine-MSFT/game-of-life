@@ -488,6 +488,60 @@ mod replay_tests {
     }
 
     #[test]
+    fn stable_run_record_replays_successfully() {
+        let dir = unique_temp_dir("replay_stable");
+        let runs_dir = dir.join("runs");
+        let run = run_cli(&[
+            "--board-size",
+            "2x2",
+            "--max-iterations",
+            "10",
+            "--initial-board",
+            "alive",
+            "--runs-dir",
+            runs_dir.to_str().unwrap(),
+        ]);
+        assert!(run.status.success(), "stderr: {}", stderr(&run));
+        let source = one_run_record_in(&runs_dir);
+        let body = std::fs::read_to_string(&source).unwrap();
+        assert!(body.contains("status: stable"), "body:\n{body}");
+        assert!(body.contains("iterations_run: 1"), "body:\n{body}");
+
+        let output = run_cli(&["--replay", source.to_str().unwrap()]);
+
+        assert!(output.status.success(), "stderr: {}", stderr(&output));
+        assert!(stdout(&output).contains("Replay matched"));
+    }
+
+    #[test]
+    fn legacy_max_iterations_record_for_stable_board_still_replays() {
+        let dir = unique_temp_dir("replay_legacy_stable");
+        let runs_dir = dir.join("runs");
+        let run = run_cli(&[
+            "--board-size",
+            "2x2",
+            "--max-iterations",
+            "10",
+            "--initial-board",
+            "alive",
+            "--runs-dir",
+            runs_dir.to_str().unwrap(),
+        ]);
+        assert!(run.status.success(), "stderr: {}", stderr(&run));
+        let source = one_run_record_in(&runs_dir);
+        let body = std::fs::read_to_string(&source).unwrap();
+        let legacy_body = body
+            .replacen("status: stable", "status: max_iterations", 1)
+            .replacen("iterations_run: 1", "iterations_run: 10", 1);
+        std::fs::write(&source, legacy_body).unwrap();
+
+        let output = run_cli(&["--replay", source.to_str().unwrap(), "--ignore-integrity"]);
+
+        assert!(output.status.success(), "stderr: {}", stderr(&output));
+        assert!(stdout(&output).contains("Replay matched"));
+    }
+
+    #[test]
     fn negative_replay_corrupted_file_under_enforce() {
         let dir = unique_temp_dir("replay_corrupted");
         let runs_dir = dir.join("runs");
