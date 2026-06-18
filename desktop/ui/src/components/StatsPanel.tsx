@@ -1,7 +1,5 @@
-import { useState } from "react";
 import {
   Body1,
-  Button,
   Caption1,
   Subtitle2,
   makeStyles,
@@ -23,20 +21,6 @@ const useStyles = makeStyles({
   root: {
     display: "flex",
     flexDirection: "column",
-    backgroundColor: tokens.colorNeutralBackground1,
-    borderLeft: `1px solid ${tokens.colorNeutralStroke2}`,
-    width: "260px",
-    minWidth: "260px",
-    overflowY: "auto",
-  },
-  collapsed: {
-    width: "40px",
-    minWidth: "40px",
-    alignItems: "center",
-    padding: tokens.spacingVerticalM,
-  },
-  expanded: {
-    padding: tokens.spacingVerticalM,
     gap: tokens.spacingVerticalM,
   },
   metricsGrid: {
@@ -51,9 +35,6 @@ const useStyles = makeStyles({
   chart: {
     height: "180px",
     width: "100%",
-  },
-  toggleButton: {
-    alignSelf: "flex-end",
   },
 });
 
@@ -85,21 +66,10 @@ const prepareSeries = (history: number[]): { generation: number; alive: number }
 
 export const StatsPanel = () => {
   const styles = useStyles();
-  const [collapsed, setCollapsed] = useState(false);
   const history = useStore((s) => s.history);
   const latestTick = useStore((s) => s.latestTick);
   const session = useStore((s) => s.session);
   const finalStats = useStore((s) => s.finalStats);
-
-  if (collapsed) {
-    return (
-      <aside className={`${styles.root} ${styles.collapsed}`}>
-        <Button appearance="subtle" onClick={() => setCollapsed(false)} aria-label="Expand stats panel">
-          ◀
-        </Button>
-      </aside>
-    );
-  }
 
   const series = prepareSeries(history);
   const alive = latestTick?.alive ?? history[history.length - 1] ?? 0;
@@ -108,17 +78,7 @@ export const StatsPanel = () => {
   const deaths = latestTick?.deaths ?? 0;
 
   return (
-    <aside className={`${styles.root} ${styles.expanded}`}>
-      <div className={styles.toggleButton}>
-        <Button
-          appearance="subtle"
-          onClick={() => setCollapsed(true)}
-          aria-label="Collapse stats panel"
-        >
-          ▶
-        </Button>
-      </div>
-
+    <section className={styles.root} aria-label="Statistics panel">
       <Subtitle2>Generation {session?.iteration ?? 0}</Subtitle2>
 
       <div className={styles.metricsGrid}>
@@ -183,6 +143,6 @@ export const StatsPanel = () => {
           </div>
         </>
       )}
-    </aside>
+    </section>
   );
 };
