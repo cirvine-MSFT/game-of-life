@@ -19,17 +19,69 @@ fn board_from_grid(lines: &[&str]) -> InMemoryBoard {
     board
 }
 
+fn assert_no_transitional_states(board: &InMemoryBoard) {
+    for y in 0..board.height() {
+        for x in 0..board.width() {
+            let state = board.get(x, y);
+            assert!(
+                state == CellState::Dead || state == CellState::Alive,
+                "Cell at ({x}, {y}) has transitional state: {state:?}"
+            );
+        }
+    }
+}
+
+fn advance_generations(board: &mut InMemoryBoard, generations: usize) {
+    for _ in 0..generations {
+        board.advance_generation();
+        assert_no_transitional_states(board);
+    }
+}
+
+fn assert_still_life_is_stable(lines: &[&str], pattern_name: &str) {
+    let mut board = board_from_grid(lines);
+    let initial_state = board.clone();
+
+    advance_generations(&mut board, 4);
+
+    assert_eq!(
+        board, initial_state,
+        "{pattern_name} should remain stable across generations"
+    );
+}
+
 mod normal_tests {
     use super::*;
 
     #[test]
     fn still_life_block_remains_stable() {
-        let mut board = board_from_grid(&["##", "##"]);
+        assert_still_life_is_stable(&["##", "##"], "block");
+    }
 
-        let initial_state = board.clone();
-        board.advance_generation();
+    #[test]
+    fn still_life_beehive_remains_stable() {
+        assert_still_life_is_stable(
+            &["......", "..##..", ".#..#.", "..##..", "......"],
+            "beehive",
+        );
+    }
 
-        assert_eq!(board, initial_state, "Block should remain stable");
+    #[test]
+    fn still_life_loaf_remains_stable() {
+        assert_still_life_is_stable(
+            &["......", "..##..", ".#..#.", "..#.#.", "...#..", "......"],
+            "loaf",
+        );
+    }
+
+    #[test]
+    fn still_life_boat_remains_stable() {
+        assert_still_life_is_stable(&[".....", ".##..", ".#.#.", "..#..", "....."], "boat");
+    }
+
+    #[test]
+    fn still_life_tub_remains_stable() {
+        assert_still_life_is_stable(&[".....", "..#..", ".#.#.", "..#..", "....."], "tub");
     }
 
     #[test]
@@ -38,14 +90,14 @@ mod normal_tests {
 
         let initial = board.clone();
 
-        board.advance_generation();
+        advance_generations(&mut board, 1);
         let expected_after_1 = board_from_grid(&[".#.", ".#.", ".#."]);
         assert_eq!(
             board, expected_after_1,
             "After 1 generation, blinker should be vertical"
         );
 
-        board.advance_generation();
+        advance_generations(&mut board, 1);
         assert_eq!(
             board, initial,
             "After 2 generations, blinker should return to initial state"
@@ -53,20 +105,119 @@ mod normal_tests {
     }
 
     #[test]
+    fn toad_oscillator_returns_to_initial_state_after_period_two() {
+        let mut board =
+            board_from_grid(&["......", "......", "..###.", ".###..", "......", "......"]);
+
+        let initial = board.clone();
+
+        advance_generations(&mut board, 1);
+        let expected_after_1 =
+            board_from_grid(&["......", "...#..", ".#..#.", ".#..#.", "..#...", "......"]);
+        assert_eq!(
+            board, expected_after_1,
+            "After 1 generation, toad should reach its alternate phase"
+        );
+
+        advance_generations(&mut board, 1);
+        assert_eq!(
+            board, initial,
+            "After 2 generations, toad should return to initial state"
+        );
+    }
+
+    #[test]
+    fn beacon_oscillator_returns_to_initial_state_after_period_two() {
+        let mut board =
+            board_from_grid(&["......", ".##...", ".##...", "...##.", "...##.", "......"]);
+
+        let initial = board.clone();
+
+        advance_generations(&mut board, 1);
+        let expected_after_1 =
+            board_from_grid(&["......", ".##...", ".#....", "....#.", "...##.", "......"]);
+        assert_eq!(
+            board, expected_after_1,
+            "After 1 generation, beacon should reach its alternate phase"
+        );
+
+        advance_generations(&mut board, 1);
+        assert_eq!(
+            board, initial,
+            "After 2 generations, beacon should return to initial state"
+        );
+    }
+
+    #[test]
+    fn pulsar_oscillator_returns_to_initial_state_after_period_three() {
+        let mut board = board_from_grid(&[
+            "...............",
+            "...###...###...",
+            "...............",
+            ".#....#.#....#.",
+            ".#....#.#....#.",
+            ".#....#.#....#.",
+            "...###...###...",
+            "...............",
+            "...###...###...",
+            ".#....#.#....#.",
+            ".#....#.#....#.",
+            ".#....#.#....#.",
+            "...............",
+            "...###...###...",
+            "...............",
+        ]);
+
+        let initial = board.clone();
+
+        advance_generations(&mut board, 1);
+        let expected_after_1 = board_from_grid(&[
+            "....#.....#....",
+            "....#.....#....",
+            "....##...##....",
+            "...............",
+            "###..##.##..###",
+            "..#.#.#.#.#.#..",
+            "....##...##....",
+            "...............",
+            "....##...##....",
+            "..#.#.#.#.#.#..",
+            "###..##.##..###",
+            "...............",
+            "....##...##....",
+            "....#.....#....",
+            "....#.....#....",
+        ]);
+        assert_eq!(
+            board, expected_after_1,
+            "After 1 generation, pulsar should reach its first alternate phase"
+        );
+
+        advance_generations(&mut board, 2);
+        assert_eq!(
+            board, initial,
+            "After 3 generations, pulsar should return to initial state"
+        );
+    }
+
+    #[test]
+    fn glider_spaceship_moves_diagonally_after_four_generations() {
+        let mut board = board_from_grid(&[".#...", "..#..", "###..", ".....", "....."]);
+
+        advance_generations(&mut board, 4);
+
+        let expected_after_4 = board_from_grid(&[".....", "..#..", "...#.", ".###.", "....."]);
+        assert_eq!(
+            board, expected_after_4,
+            "After 4 generations, glider should move down and right by one cell"
+        );
+    }
+
+    #[test]
     fn no_transitional_states_remain_after_generation() {
         let mut board = board_from_grid(&["###", "###", "###"]);
 
-        board.advance_generation();
-
-        for y in 0..board.height() {
-            for x in 0..board.width() {
-                let state = board.get(x, y);
-                assert!(
-                    state == CellState::Dead || state == CellState::Alive,
-                    "Cell at ({x}, {y}) has transitional state: {state:?}"
-                );
-            }
-        }
+        advance_generations(&mut board, 1);
     }
 
     #[test]
@@ -165,7 +316,7 @@ mod edge_case_tests {
     fn edge_case_edge_cells_use_bounded_semantics() {
         let mut board = board_from_grid(&["...", "###", "..."]);
 
-        board.advance_generation();
+        advance_generations(&mut board, 1);
 
         let expected = board_from_grid(&[".#.", ".#.", ".#."]);
         assert_eq!(
@@ -178,7 +329,7 @@ mod edge_case_tests {
     fn edge_case_corner_cell_with_no_neighbors_dies() {
         let mut board = board_from_grid(&["#  ", "   ", "   "]);
 
-        board.advance_generation();
+        advance_generations(&mut board, 1);
 
         let expected = board_from_grid(&["   ", "   ", "   "]);
         assert_eq!(board, expected, "Single corner cell should die");
@@ -188,10 +339,42 @@ mod edge_case_tests {
     fn edge_case_one_by_one_live_cell_dies_after_one_generation() {
         let mut board = board_from_grid(&["#"]);
 
-        board.advance_generation();
+        advance_generations(&mut board, 1);
 
         let expected = board_from_grid(&["."]);
         assert_eq!(board, expected, "Single live cell has no neighbors");
+    }
+
+    #[test]
+    fn edge_case_corner_block_still_life_remains_stable() {
+        let mut board = board_from_grid(&["##.", "##.", "..."]);
+        let initial = board.clone();
+
+        advance_generations(&mut board, 4);
+
+        assert_eq!(
+            board, initial,
+            "Corner block should remain stable with out-of-bounds neighbors dead"
+        );
+    }
+
+    #[test]
+    fn edge_case_top_edge_blinker_does_not_wrap() {
+        let mut board = board_from_grid(&["###", "...", "..."]);
+
+        advance_generations(&mut board, 1);
+        let expected_after_1 = board_from_grid(&[".#.", ".#.", "..."]);
+        assert_eq!(
+            board, expected_after_1,
+            "Top-edge blinker should clip instead of wrapping above the board"
+        );
+
+        advance_generations(&mut board, 1);
+        let expected_after_2 = board_from_grid(&["...", "...", "..."]);
+        assert_eq!(
+            board, expected_after_2,
+            "Clipped top-edge blinker should die out under bounded semantics"
+        );
     }
 
     #[test]
