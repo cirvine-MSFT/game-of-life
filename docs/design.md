@@ -139,7 +139,6 @@ The fully alive source is useful for exercising overpopulation behavior, but it 
 - Advances until the configured maximum iteration count, extinction, or fixed-point stability
 - Prints the final board state only
 - Reports `Stable state reached at generation N` when a completed generation has zero births and zero deaths
-- For in-memory stable runs, reports known still-life component counts for block, beehive, loaf, boat, and tub
 - Uses ASCII characters (`#` for alive, `.` for dead) for platform-neutral console output
 
 Stable-state detection deliberately means fixed-point still-life detection, not period-greater-than-1 cycle detection. Oscillators such as blinkers and toads still run to the configured maximum unless they become extinct. A fully dead board is terminal under Conway's B3/S23 rule because births require exactly three live neighbors, so extinction is safe to treat as an early stop.
@@ -164,7 +163,6 @@ src/
   lib.rs       - Public module declarations and re-exports
   main.rs      - Console application binary
   persistence/ - Run record and board snapshot file IO (zero deps)
-  patterns.rs  - Known still-life component catalog and detector
   stats/       - Per-generation AdvanceOutcome and RunStatistics
 tests/
   board_tests.rs            - Board API and Game of Life behavior
@@ -238,9 +236,7 @@ Two terminal conditions can stop a run before `max_iterations`:
 1. **Extinction**: if every cell is dead at generation 0 or after a generation, the run stops with `status: extinct`. A dead board cannot resurrect under B3/S23 because every dead cell has zero live neighbors, not the three required for birth.
 2. **Fixed-point stability**: if a completed non-extinct generation reports `births == 0` and `deaths == 0`, the run stops with `status: stable`. `iterations_run` records the confirming generation `N`, meaning generation `N` matched generation `N - 1`.
 
-Cycle detection remains deferred. Period-greater-than-1 oscillators and spaceships are not `stable` for this feature because they continue to produce births and deaths between generations.
-
-The known still-life catalog is intentionally separate from termination. Stable detection is O(1) per generation using `AdvanceOutcome`; the optional in-memory catalog scan runs only after a stable non-extinct run and is O(width × height + live_cells × 8) time. It tracks visited cells in a compact `Vec<bool>`, stores only catalog-sized component footprints, and treats larger components as unknown. Streaming runs report `stable` through `AdvanceOutcome` but skip catalog matching by default to avoid a full post-run board scan on boards that intentionally exceeded memory limits.
+Cycle detection remains deferred. Period-greater-than-1 oscillators and spaceships are not `stable` for this feature because they continue to produce births and deaths between generations. A future pattern-analysis module can own cycle detection and other interesting recurring Game of Life behaviors.
 
 ### CLI surface
 

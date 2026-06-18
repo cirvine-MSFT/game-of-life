@@ -27,9 +27,28 @@ mod normal_tests {
         let mut board = board_from_grid(&["##", "##"]);
 
         let initial_state = board.clone();
-        board.advance_generation();
+        let outcome = board.advance_generation();
 
+        assert!(outcome.is_stable());
         assert_eq!(board, initial_state, "Block should remain stable");
+    }
+
+    #[test]
+    fn still_life_examples_produce_stable_outcomes() {
+        let cases = [
+            ("beehive", board_from_grid(&[".##.", "#..#", ".##."])),
+            ("loaf", board_from_grid(&[".##.", "#..#", ".#.#", "..#."])),
+            ("boat", board_from_grid(&["##.", "#.#", ".#."])),
+            ("tub", board_from_grid(&[".#.", "#.#", ".#."])),
+        ];
+
+        for (name, mut board) in cases {
+            let initial = board.clone();
+            let outcome = board.advance_generation();
+
+            assert!(outcome.is_stable(), "{name} should produce no changes");
+            assert_eq!(board, initial, "{name} should remain unchanged");
+        }
     }
 
     #[test]
@@ -50,6 +69,17 @@ mod normal_tests {
             board, initial,
             "After 2 generations, blinker should return to initial state"
         );
+    }
+
+    #[test]
+    fn oscillators_are_not_stable_after_one_generation() {
+        let mut blinker = board_from_grid(&[".....", ".....", ".###.", ".....", "....."]);
+        let mut toad = board_from_grid(&["....", ".###", "###.", "...."]);
+        let mut beacon = board_from_grid(&["##..", "##..", "..##", "..##"]);
+
+        assert!(!blinker.advance_generation().is_stable());
+        assert!(!toad.advance_generation().is_stable());
+        assert!(!beacon.advance_generation().is_stable());
     }
 
     #[test]

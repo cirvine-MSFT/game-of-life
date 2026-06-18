@@ -9,7 +9,6 @@
 pub mod algorithms;
 pub mod board;
 pub mod config;
-pub mod patterns;
 pub mod persistence;
 pub mod stats;
 
@@ -30,10 +29,6 @@ pub use config::{
     ExtractBoardConfig, InitialBoardSource, InitialBoardSourceParseError, InitialBoardSpec,
     IntegrityMode, IterationParseError, LoadFrom, LoadFromParseError, MemorySizeParseError,
     ReplayConfig, SaveSettings, SimulationConfig, DEFAULT_MAX_BOARD_MEMORY_BYTES, DEFAULT_RUNS_DIR,
-};
-pub use patterns::{
-    detect_known_still_life_patterns, StillLifePattern, StillLifePatternCount,
-    StillLifePatternSummary,
 };
 pub use stats::{
     terminal_status_for_outcome, AdvanceOutcome, RunStatistics, RunStatisticsCollector,

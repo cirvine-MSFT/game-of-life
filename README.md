@@ -76,8 +76,6 @@ The console app prints concise run information and the final board state only. P
 
 Runs stop early when they become extinct or when a completed generation has no births and no deaths. The latter is a fixed-point still-life state, reported as `stable`; repeating cycles such as blinkers still run to `--max-iterations` unless they become extinct. A fully dead board cannot come back alive under Conway's B3/S23 rule because births require exactly three live neighbors.
 
-For in-memory stable runs, the summary also reports known still-life components it can identify: block, beehive, loaf, boat, and tub. This catalog is informational only; unknown stable components do not affect stable-state detection.
-
 ### Command-line options
 
 #### Run options

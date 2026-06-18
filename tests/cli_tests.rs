@@ -142,7 +142,7 @@ mod normal_tests {
     }
 
     #[test]
-    fn stable_run_stops_before_max_iterations_and_reports_known_patterns() {
+    fn stable_run_stops_before_max_iterations() {
         let output = run_cli(&[
             "--board-size",
             "2x2",
@@ -158,7 +158,6 @@ mod normal_tests {
 
         let stdout = stdout(&output);
         assert!(stdout.contains("Stable state reached at generation 1"));
-        assert!(stdout.contains("Known still-life patterns: block=1"));
         assert!(stdout.contains("Simulation complete: 1 iterations (stable)"));
     }
 
@@ -179,7 +178,6 @@ mod normal_tests {
 
         let stdout = stdout(&output);
         assert!(!stdout.contains("Stable state reached"));
-        assert!(!stdout.contains("Known still-life patterns:"));
         assert!(stdout.contains("Simulation complete: 2 iterations (max_iterations)"));
     }
 }

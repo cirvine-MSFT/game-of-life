@@ -22,12 +22,12 @@ use game_of_life::stats::{
     RunStatisticsCollector,
 };
 use game_of_life::{
-    detect_known_still_life_patterns, parse_cli_args, BlinkerBoardInitializer, BoardEditor,
-    BoardInitializer, BoardSize, BoardUpdater, BoardView, CellCoordinate, CellState, CliCommand,
-    DemoBoardInitializer, ExtractBoardConfig, FullyAliveInitializer, InMemoryBoard,
-    InMemoryBoardCreationError, InPlaceTransitionalUpdater, InitialBoardSource, InitialBoardSpec,
-    IntegrityMode, LoadFrom, RandomBoardInitializer, ReplayConfig, SaveSettings, SimulationConfig,
-    StreamingBoard, StreamingBoardCreationError, StreamingBoardParams,
+    parse_cli_args, BlinkerBoardInitializer, BoardEditor, BoardInitializer, BoardSize,
+    BoardUpdater, BoardView, CellCoordinate, CellState, CliCommand, DemoBoardInitializer,
+    ExtractBoardConfig, FullyAliveInitializer, InMemoryBoard, InMemoryBoardCreationError,
+    InPlaceTransitionalUpdater, InitialBoardSource, InitialBoardSpec, IntegrityMode, LoadFrom,
+    RandomBoardInitializer, ReplayConfig, SaveSettings, SimulationConfig, StreamingBoard,
+    StreamingBoardCreationError, StreamingBoardParams,
 };
 
 const HELP_TEXT: &str = concat!(
@@ -312,7 +312,6 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
         initial_alive_count
     );
     print_terminal_status_message(&stats);
-    print_still_life_pattern_summary(&board, &stats);
     println!("Final board state:");
     print!("{board}");
     println!(
@@ -721,38 +720,6 @@ fn print_terminal_status_message(stats: &RunStatistics) {
         println!(
             "Stable state reached at generation {}",
             stats.iterations_run
-        );
-    }
-}
-
-fn print_still_life_pattern_summary(board: &InMemoryBoard, stats: &RunStatistics) {
-    if !matches!(stats.status, RunStatus::Stable) || stats.final_alive_count == 0 {
-        return;
-    }
-
-    let summary = detect_known_still_life_patterns(board)
-        .expect("in-memory board pattern detection is infallible");
-    if summary.has_known_patterns() {
-        let known = summary
-            .counts
-            .iter()
-            .map(|entry| format!("{}={}", entry.pattern.as_str(), entry.count))
-            .collect::<Vec<_>>()
-            .join(", ");
-        if summary.unknown_components == 0 {
-            println!("Known still-life patterns: {known}");
-        } else {
-            println!(
-                "Known still-life patterns: {known}; unknown stable components={}",
-                summary.unknown_components
-            );
-        }
-    } else if summary.unknown_components == 0 {
-        println!("Known still-life patterns: none");
-    } else {
-        println!(
-            "Known still-life patterns: none; unknown stable components={}",
-            summary.unknown_components
         );
     }
 }
