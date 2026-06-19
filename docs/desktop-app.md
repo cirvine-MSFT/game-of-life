@@ -130,6 +130,21 @@ status, which would prevent CLI replay round-tripping. The visualizer
 sidesteps this by writing board snapshots for in-flight captures and
 full run records only once the simulation has terminated.
 
+## Tests
+
+Desktop Rust integration tests live under `desktop/tests/` and use the same
+`_tests.rs` suffix as the root Rust crate:
+
+| Test file | Covers |
+|---|---|
+| `desktop/tests/ipc_types_tests.rs` | IPC wire-format conversions and payload helpers |
+| `desktop/tests/run_commands_tests.rs` | Pure run-command helper behavior |
+| `desktop/tests/session_tests.rs` | `RunSession` state-machine behavior |
+
+Desktop UI tests keep the UI-native Vitest convention and stay near source
+files as `.test.ts` or `.test.tsx`, such as
+`desktop/ui/src/App.test.tsx` and `desktop/ui/src/ipc/types.test.ts`.
+
 ## Release artifacts
 
 See the **Releases** section of the [top-level README](../README.md) for

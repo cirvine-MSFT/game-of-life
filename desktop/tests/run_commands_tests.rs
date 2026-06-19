@@ -2,7 +2,7 @@
 //!
 //! The Tauri command wrappers themselves require a real Tauri runtime
 //! (with a `State` and an `AppHandle`) so they're exercised end-to-end
-//! via `RunSession` integration tests in `session.rs` instead. This
+//! via `RunSession` integration tests in `session_tests.rs` instead. This
 //! file covers the small set of pure helpers we deliberately export so
 //! they can be unit-tested without bringing up the runtime.
 

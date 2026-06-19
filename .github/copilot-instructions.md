@@ -17,9 +17,20 @@ src/
   lib.rs          Library module declarations and public re-exports
   main.rs         Console application and process-level CLI behavior
 tests/
-  board_tests.rs  Board API and generation behavior tests
-  config_tests.rs Configuration and parser tests
-  cli_tests.rs    End-to-end binary CLI tests
+  algorithms_tests.rs       Algorithm initializer and updater behavior tests
+  board_tests.rs            Board API and generation behavior tests
+  config_tests.rs           Configuration and parser tests
+  cli_tests.rs              End-to-end binary CLI tests
+  pattern_analysis_tests.rs Pattern analyzer behavior tests
+  persistence_tests.rs      Persistence wrapper test binary
+  persistence/*_tests.rs    Persistence child test modules
+  stats_tests.rs            Statistics wrapper test binary
+  stats/*_tests.rs          Statistics child test modules
+  streaming_tests.rs        Streaming wrapper test binary
+  streaming/*_tests.rs      Streaming child test modules
+desktop/
+  tests/*_tests.rs          Desktop Rust integration tests
+  ui/src/**/*.test.ts(x)    Desktop UI Vitest tests
 Cargo.toml        Project manifest with library + binary targets
 .github/
   workflows/
@@ -36,7 +47,7 @@ docs/
 
 - **Edition**: 2021
 - **Dependencies**: Zero external crates (std library only)
-- **Testing**: Cargo integration tests under `tests/` with ASCII grid helpers
+- **Testing**: Rust tests live outside product code in Cargo integration-test directories that roughly mirror the product module structure. Root tests go under `tests/`, desktop Rust tests under `desktop/tests/`, and Rust test files use `_tests.rs` filenames with ASCII grid helpers where useful. Desktop UI tests keep `.test.ts` / `.test.tsx`.
 - **Code Style**: Enforced by `cargo fmt` and `cargo clippy`
 
 ## Key Design Decisions
@@ -63,7 +74,7 @@ docs/
 
 ### Adding a New Test
 
-Add tests under the matching integration test file in `tests/`. Use `tests/board_tests.rs` for board behavior, `tests/config_tests.rs` for configuration parsing, and `tests/cli_tests.rs` for end-to-end binary behavior. Prefix valid boundary tests with `edge_case_` and invalid input or error-message tests with `negative_`.
+Add Rust tests under the matching `_tests.rs` integration test file in the separate test directory, not inline in product modules. The test path should roughly mirror the product module or behavior it covers, and the filename should clearly name that module or behavior plus the `_tests.rs` suffix. Use `tests/board_tests.rs` for board behavior, `tests/config_tests.rs` for configuration parsing, and `tests/cli_tests.rs` for end-to-end binary behavior. Grouped modules use a suffixed wrapper such as `tests/persistence_tests.rs` plus suffixed child files such as `tests/persistence/hash_tests.rs`. Desktop Rust tests use the same suffix under `desktop/tests/`. Desktop UI tests keep the UI-native `.test.ts` / `.test.tsx` convention. Prefix valid boundary tests with `edge_case_` and invalid input or error-message tests with `negative_`.
 
 Create an ASCII grid helper in the relevant test file when needed:
 

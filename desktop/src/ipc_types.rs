@@ -252,27 +252,3 @@ pub struct CellEdit {
     pub y: u32,
     pub alive: bool,
 }
-
-#[cfg(test)]
-mod inline_smoke {
-    // Only minimal #[cfg(test)] sanity checks — comprehensive coverage lives
-    // in `tests/ipc_types.rs` per the project's integration-test convention.
-    use super::*;
-
-    #[test]
-    fn cell_state_round_trip() {
-        for state in [
-            CellState::Dead,
-            CellState::Alive,
-            CellState::Dying,
-            CellState::Resurrecting,
-        ] {
-            let ipc = IpcCellState::from_core(state);
-            let back = ipc.to_core();
-            match state {
-                CellState::Alive | CellState::Resurrecting => assert_eq!(back, CellState::Alive),
-                CellState::Dead | CellState::Dying => assert_eq!(back, CellState::Dead),
-            }
-        }
-    }
-}

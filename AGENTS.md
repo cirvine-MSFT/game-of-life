@@ -35,7 +35,7 @@ Examples that fail and should be removed: `/// Builds a snapshot wrapping the gi
 
 ## Test Style
 
-All tests live in `tests/` (Cargo integration test style). No inline `#[cfg(test)] mod tests {}` blocks inside `src/` modules — they're idiomatic in Rust but **not used in this repo**.
+Rust tests live outside product code in Cargo integration-test directories. Root crate tests go under `tests/`; desktop Rust tests go under `desktop/tests/`. Do not add inline `#[cfg(test)] mod tests {}` blocks inside `src/` or `desktop/src/` modules — they're idiomatic in Rust but **not used in this repo**.
 
 Two consequences worth being explicit about:
 
@@ -44,24 +44,28 @@ Two consequences worth being explicit about:
    - Test the public function that calls it (the helper is implementation detail), OR
    - Promote the helper to public if it really is a meaningful library surface.
 
-File layout — `tests/` mirrors `src/`:
+File layout and naming — Rust integration tests should roughly mirror the product-code module structure they cover, but from the separate test directory. Test filenames must identify both the product module or behavior under test and that the file is a test: use the `_tests.rs` suffix. Top-level `tests/*_tests.rs` and `desktop/tests/*_tests.rs` files are Cargo test binaries. Grouped child modules under `tests/<module>/` also use `_tests.rs` and are included by a suffixed wrapper.
 
 ```
 src/                            tests/
-  persistence/  ───────────►      persistence.rs          ← wrapper (cargo test entry)
+  persistence/  ───────────►      persistence_tests.rs    ← wrapper (cargo test entry)
     hash.rs                       persistence/
-    magic.rs                        hash.rs               ← tests for src/persistence/hash.rs
-    ...                             magic.rs
+    magic.rs                        hash_tests.rs         ← tests for src/persistence/hash.rs
+    ...                             magic_tests.rs
                                     ...
-  stats/        ───────────►      stats.rs
+  stats/        ───────────►      stats_tests.rs
     run_statistics.rs               stats/
-                                    run_statistics.rs
+                                    run_statistics_tests.rs
   config.rs     ───────────►      config_tests.rs        ← flat module → flat test file
+  algorithms/   ───────────►      algorithms_tests.rs
+  pattern_analysis/ ───────►      pattern_analysis_tests.rs
+desktop/src/
+  session.rs    ───────────►      desktop/tests/session_tests.rs
 ```
 
-Why the wrapper file: cargo's integration-test discovery only picks up top-level `tests/*.rs` files as test binaries. Files inside `tests/<module>/` need a `tests/<module>.rs` wrapper that declares each submodule with `#[path = "<module>/<file>.rs"] mod <file>;`. The `#[path]` is required because each `tests/*.rs` is its own crate root, so the default `mod foo;` lookup looks for `tests/foo.rs` (sibling) instead of `tests/<wrapper>/foo.rs` (child). See `tests/persistence.rs` and `tests/stats.rs` for the pattern.
+Why the wrapper file: cargo's integration-test discovery only picks up top-level `tests/*.rs` files as test binaries. Files inside `tests/<module>/` need a `tests/<module>_tests.rs` wrapper that declares each submodule with `#[path = "<module>/<file>_tests.rs"] mod <file>_tests;`. The `#[path]` is required because each `tests/*.rs` is its own crate root, so the default `mod foo;` lookup looks for `tests/foo.rs` (sibling) instead of `tests/<wrapper>/foo.rs` (child). See `tests/persistence_tests.rs` and `tests/stats_tests.rs` for the pattern.
 
-End-to-end binary-driven tests (e.g. CLI tests that drive the actual binary via `Command::new(env!("CARGO_BIN_EXE_game-of-life"))`) live alongside their module — `tests/persistence/cli.rs` covers binary-driven persistence behavior.
+End-to-end binary-driven tests (e.g. CLI tests that drive the actual binary via `Command::new(env!("CARGO_BIN_EXE_game-of-life"))`) live alongside their module — `tests/persistence/cli_tests.rs` covers binary-driven persistence behavior.
 
 ## What Can Be Changed
 
@@ -176,9 +180,16 @@ cargo build --release
 | `src/config.rs` | SimulationConfig, BoardSize, CLI/config parsing, and typed errors |
 | `src/lib.rs` | Library module declarations and public re-exports |
 | `src/main.rs` | Console app and process-level CLI behavior |
+| `tests/algorithms_tests.rs` | Algorithm initializer and updater behavior tests |
 | `tests/board_tests.rs` | Board API and generation behavior tests |
 | `tests/config_tests.rs` | Configuration and parser tests |
 | `tests/cli_tests.rs` | End-to-end binary CLI tests |
+| `tests/pattern_analysis_tests.rs` | Pattern analyzer behavior tests |
+| `tests/persistence_tests.rs`, `tests/persistence/*_tests.rs` | Persistence behavior and CLI flow tests |
+| `tests/stats_tests.rs`, `tests/stats/*_tests.rs` | Statistics behavior tests |
+| `tests/streaming_tests.rs`, `tests/streaming/*_tests.rs` | Streaming board behavior tests |
+| `desktop/tests/*_tests.rs` | Desktop Rust integration tests |
+| `desktop/ui/src/**/*.test.ts(x)` | Desktop UI Vitest tests |
 | `Cargo.toml` | Project manifest |
 | `.github/workflows/ci.yml` | CI: repository hygiene, format, lint, test, build, smoke test |
 | `docs/design.md` | Full design rationale and tradeoffs |
