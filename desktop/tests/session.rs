@@ -424,7 +424,9 @@ fn extend_max_iterations_preserves_cycle_generation_accounting() {
     let info = s.info();
     assert!(info.completed);
     assert_eq!(info.status, Some(IpcRunStatus::Cyclic));
-    let stats = s.final_stats().expect("extended cycle should finalise stats");
+    let stats = s
+        .final_stats()
+        .expect("extended cycle should finalise stats");
     assert_eq!(stats.iterations_run, 2);
     assert_eq!(stats.cycle_start_generation, Some(0));
     assert_eq!(stats.cycle_detected_generation, Some(2));
