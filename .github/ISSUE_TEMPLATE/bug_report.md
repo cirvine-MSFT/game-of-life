@@ -3,12 +3,14 @@ name: Bug report
 about: Report incorrect behavior or a broken workflow
 title: ""
 labels: bug
-assignees: ""
+assignees: cirvine-MSFT
 ---
 
 ## What happened?
 
 Describe the issue.
+
+Do not include security vulnerabilities here. Follow SECURITY.md for private reporting.
 
 ## Expected behavior
 

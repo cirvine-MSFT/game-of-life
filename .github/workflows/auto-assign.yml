@@ -1,0 +1,27 @@
+name: Auto-assign issues and pull requests
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  assign:
+    name: Assign to maintainer
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Assign item
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ITEM_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${REPOSITORY}/issues/${ITEM_NUMBER}/assignees" \
+            --field assignees[]=cirvine-MSFT
