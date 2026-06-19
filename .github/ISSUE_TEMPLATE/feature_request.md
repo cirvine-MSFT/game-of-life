@@ -3,7 +3,7 @@ name: Feature request
 about: Propose a new Game of Life exercise or enhancement
 title: ""
 labels: enhancement
-assignees: ""
+assignees: cirvine-MSFT
 ---
 
 ## Goal
