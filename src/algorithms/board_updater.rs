@@ -22,5 +22,10 @@ pub trait BoardUpdater {
     fn advance_generation_with_signature<B: BoardEditor + ?Sized>(
         &self,
         board: &mut B,
-    ) -> Result<GenerationSummary, B::Error>;
+    ) -> Result<GenerationSummary, B::Error> {
+        Ok(GenerationSummary::new(
+            self.advance_generation(board)?,
+            None,
+        ))
+    }
 }

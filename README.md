@@ -76,6 +76,8 @@ The console app prints concise run information and the final board state only. P
 
 Runs stop early when they become extinct, become fixed-point stable, or repeat an exact prior board state. Stable no-op confirmations are reported at the previous generation and are not counted in `iterations_run`; cyclic runs stop at the repeated generation and include cycle start, detection generation, and period metadata. A fully dead board cannot come back alive under Conway's B3/S23 rule because births require exactly three live neighbors.
 
+Exact cycle detection retains one bit-packed signature per observed in-memory generation, so long transient runs can use memory proportional to `board size x generations`. That history is intentionally not kept for streaming-sized boards.
+
 ### Command-line options
 
 #### Run options
@@ -93,6 +95,8 @@ Runs stop early when they become extinct, become fixed-point stable, or repeat a
 | `--continue <PATH>` | Continue a prior run record: load its FINAL board as the initial board. Requires one of `--additional-iterations` or `--max-iterations` (see below). Mutually exclusive with `--load-board` and `--initial-board`. | N/A |
 | `--additional-iterations <N>` | With `--continue`: run **N more** generations. Mutually exclusive with `--max-iterations`. | N/A |
 | `-m`, `--max-iterations <COUNT>` with `--continue` | With `--continue`: target a **cumulative total** of `COUNT` iterations across the chain (continuation runs for `COUNT - source.iterations_run` more). Errors if `COUNT` is not strictly greater than the source run's `iterations_run`. Without `--continue`, just bounds this run's loop as usual. | `10` |
+
+Cycle generation metadata in continuation records is relative to the continuation run segment, matching that record's `iterations_run`. The cycle period is independent of that numbering.
 
 #### Save options
 

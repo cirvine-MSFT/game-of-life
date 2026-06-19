@@ -245,6 +245,8 @@ Pattern analysis is stateful per run/session. A `PatternAnalyzer` owns detector 
 
 The shared `BoardSignature` value is exact, not hash-only: board dimensions, alive-cell count, and row-major bit-packed live/dead cells. In-memory cycle detection stores `BoardSignature -> first_seen_generation` in a hash map, but equality still compares the full signature before reporting a cycle. This avoids false positives while keeping expected lookup O(1).
 
+Exact in-memory cycle detection retains one signature per observed generation. `--max-board-memory` controls whether the active board stays in memory or promotes to streaming storage; it does not cap retained pattern-analysis history. Users running large in-memory boards for very high iteration counts should account for memory proportional to `board size x observed generations`, or use streaming mode when exact cycle history is less important than memory bounds.
+
 Signature construction is fused with existing board passes where possible. Generation advancement can return a `GenerationSummary` containing both the existing `AdvanceOutcome` and the post-generation signature built during normalization. Callers that explicitly need a signature outside the hot path can request one through the board signature interface, which may scan the board when no precomputed signature is available.
 
 ### CLI surface
@@ -256,6 +258,8 @@ Signature construction is fused with existing board passes where possible. Gener
 - `--extract-board <PATH> --output <PATH>` — write a snapshot from a run record's `INITIAL` or `FINAL` block.
 - `--ignore-integrity` — opt-in bypass of the `content_hash` check (warns on stderr).
 - `--max-input-file-bytes` — per-invocation override of the input file size guard.
+
+Cycle generation metadata in continuation records is relative to the current run segment, matching `iterations_run`; `cycle_period` is invariant across continuation boundaries.
 
 ### Deferred (future PRs)
 

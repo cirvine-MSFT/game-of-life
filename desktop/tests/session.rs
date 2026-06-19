@@ -405,6 +405,30 @@ fn extend_max_iterations_rehydrates_stats_so_next_cap_hit_finalises() {
         info
     );
     assert_eq!(info.status, Some(IpcRunStatus::MaxIterations));
+    let stats = s.final_stats().expect("extended run should finalise stats");
+    assert_eq!(stats.iterations_run, 3);
+}
+
+#[test]
+fn extend_max_iterations_preserves_cycle_generation_accounting() {
+    let s = Arc::new(RunSession::new());
+    s.create_run(5, 5, InitialSource::Pattern(PatternName::Blinker), 1, None)
+        .unwrap();
+    s.start_run().unwrap();
+    s.advance_one().unwrap();
+    assert_eq!(s.info().status, Some(IpcRunStatus::MaxIterations));
+
+    s.extend_max_iterations(3).unwrap();
+    s.advance_one().unwrap();
+
+    let info = s.info();
+    assert!(info.completed);
+    assert_eq!(info.status, Some(IpcRunStatus::Cyclic));
+    let stats = s.final_stats().expect("extended cycle should finalise stats");
+    assert_eq!(stats.iterations_run, 2);
+    assert_eq!(stats.cycle_start_generation, Some(0));
+    assert_eq!(stats.cycle_detected_generation, Some(2));
+    assert_eq!(stats.cycle_period, Some(2));
 }
 
 #[test]

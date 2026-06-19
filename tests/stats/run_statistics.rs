@@ -73,6 +73,29 @@ fn collector_records_cycle_metadata() {
 }
 
 #[test]
+fn collector_can_resume_from_finalized_statistics() {
+    let mut collector = RunStatisticsCollector::starting_from(3);
+    collector.record(AdvanceOutcome::from_counts(2, 2, 3));
+    let stats = collector.finalize(RunStatus::MaxIterations);
+
+    let mut resumed = RunStatisticsCollector::from_statistics(&stats);
+    resumed.record(AdvanceOutcome::from_counts(2, 2, 3));
+    let cycle = CycleStatistics {
+        start_generation: 0,
+        detected_generation: 2,
+        period: 2,
+    };
+    let resumed_stats = resumed.finalize_with_cycle(RunStatus::Cyclic, Some(cycle));
+
+    assert_eq!(resumed_stats.initial_alive_count, 3);
+    assert_eq!(resumed_stats.final_alive_count, 3);
+    assert_eq!(resumed_stats.total_births, 4);
+    assert_eq!(resumed_stats.total_deaths, 4);
+    assert_eq!(resumed_stats.iterations_run, 2);
+    assert_eq!(resumed_stats.cycle, Some(cycle));
+}
+
+#[test]
 fn terminal_status_prioritizes_extinction_over_stability() {
     let extinct = AdvanceOutcome::from_counts(0, 0, 0);
     assert_eq!(

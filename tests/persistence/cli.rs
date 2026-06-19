@@ -334,7 +334,10 @@ mod continuation_tests {
         // run for 6 more, and the new record's iterations_run reflects that.
         let dir = unique_temp_dir("continue_cumulative");
         let runs_dir = dir.join("runs");
-        let glider = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples\\patterns\\glider.gol");
+        let glider = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("examples")
+            .join("patterns")
+            .join("glider.gol");
         run_cli(&[
             "--load-board",
             glider.to_str().unwrap(),
@@ -368,7 +371,10 @@ mod continuation_tests {
         // Source ran 4 iterations; --max-iterations 4 has nothing left to do.
         let dir = unique_temp_dir("continue_cum_equal");
         let runs_dir = dir.join("runs");
-        let glider = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples\\patterns\\glider.gol");
+        let glider = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("examples")
+            .join("patterns")
+            .join("glider.gol");
         run_cli(&[
             "--load-board",
             glider.to_str().unwrap(),

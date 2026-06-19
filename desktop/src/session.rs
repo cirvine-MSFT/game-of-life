@@ -524,10 +524,16 @@ impl RunSession {
             .map(|s| matches!(s.status, RunStatus::MaxIterations))
             .unwrap_or(false);
         if was_at_max && new_total > data.iteration {
+            let restored_stats = if data.stats.is_none() {
+                data.final_stats
+                    .as_ref()
+                    .map(RunStatisticsCollector::from_statistics)
+            } else {
+                None
+            };
             data.final_stats = None;
-            if data.stats.is_none() {
-                let last_alive = data.alive_history.last().copied().unwrap_or(0);
-                data.stats = Some(RunStatisticsCollector::starting_from(last_alive));
+            if let Some(stats) = restored_stats {
+                data.stats = Some(stats);
             }
         }
         Ok(())

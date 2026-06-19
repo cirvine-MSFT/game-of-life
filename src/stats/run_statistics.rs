@@ -86,6 +86,20 @@ impl RunStatisticsCollector {
         }
     }
 
+    pub fn from_statistics(statistics: &RunStatistics) -> Self {
+        Self {
+            initial_alive_count: statistics.initial_alive_count,
+            final_alive_count: statistics.final_alive_count,
+            peak_alive_count: statistics.peak_alive_count,
+            peak_alive_generation: statistics.peak_alive_generation,
+            min_alive_count: statistics.min_alive_count,
+            min_alive_generation: statistics.min_alive_generation,
+            total_births: statistics.total_births,
+            total_deaths: statistics.total_deaths,
+            iterations_run: statistics.iterations_run,
+        }
+    }
+
     pub fn record(&mut self, outcome: AdvanceOutcome) {
         self.iterations_run += 1;
         self.total_births += outcome.births;
