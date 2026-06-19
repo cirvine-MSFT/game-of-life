@@ -157,6 +157,9 @@ pub struct RunRecordResult {
     pub min_alive_generation: u64,
     pub total_births: u64,
     pub total_deaths: u64,
+    pub cycle_start_generation: Option<u64>,
+    pub cycle_detected_generation: Option<u64>,
+    pub cycle_period: Option<u64>,
     pub initial_board_hash: u64,
     pub final_board_hash: u64,
 }
@@ -532,6 +535,15 @@ fn write_run_record_body<W: Write>(writer: &mut W, record: &RunRecord) -> io::Re
     )?;
     writeln!(writer, "total_births: {}", record.result.total_births)?;
     writeln!(writer, "total_deaths: {}", record.result.total_deaths)?;
+    if let Some(value) = record.result.cycle_start_generation {
+        writeln!(writer, "cycle_start_generation: {value}")?;
+    }
+    if let Some(value) = record.result.cycle_detected_generation {
+        writeln!(writer, "cycle_detected_generation: {value}")?;
+    }
+    if let Some(value) = record.result.cycle_period {
+        writeln!(writer, "cycle_period: {value}")?;
+    }
     writeln!(
         writer,
         "initial_board_hash: {}",
@@ -1005,6 +1017,9 @@ fn parse_result_section(
     let mut min_alive_generation: Option<u64> = None;
     let mut total_births: Option<u64> = None;
     let mut total_deaths: Option<u64> = None;
+    let mut cycle_start_generation: Option<u64> = None;
+    let mut cycle_detected_generation: Option<u64> = None;
+    let mut cycle_period: Option<u64> = None;
     let mut initial_board_hash: Option<u64> = None;
     let mut final_board_hash: Option<u64> = None;
 
@@ -1070,6 +1085,18 @@ fn parse_result_section(
                 let v = parse_u64_field(value, key, &location)?;
                 set_once(&mut total_deaths, v, &location, key)?;
             }
+            "cycle_start_generation" => {
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut cycle_start_generation, v, &location, key)?;
+            }
+            "cycle_detected_generation" => {
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut cycle_detected_generation, v, &location, key)?;
+            }
+            "cycle_period" => {
+                let v = parse_u64_field(value, key, &location)?;
+                set_once(&mut cycle_period, v, &location, key)?;
+            }
             "initial_board_hash" => {
                 let parsed = parse_hash(value).map_err(|_| RunRecordReadError::MalformedField {
                     location: location.clone(),
@@ -1103,8 +1130,29 @@ fn parse_result_section(
         })
     }
 
+    let status = required_field(status, "status")?;
+    let (cycle_start_generation, cycle_detected_generation, cycle_period) = if status == "cyclic" {
+        (
+            Some(required_field(
+                cycle_start_generation,
+                "cycle_start_generation",
+            )?),
+            Some(required_field(
+                cycle_detected_generation,
+                "cycle_detected_generation",
+            )?),
+            Some(required_field(cycle_period, "cycle_period")?),
+        )
+    } else {
+        (
+            cycle_start_generation,
+            cycle_detected_generation,
+            cycle_period,
+        )
+    };
+
     Ok(RunRecordResult {
-        status: required_field(status, "status")?,
+        status,
         iterations_run: required_field(iterations_run, "iterations_run")?,
         wall_time_ms: required_field(wall_time_ms, "wall_time_ms")?,
         initial_alive_count: required_field(initial_alive_count, "initial_alive_count")?,
@@ -1115,6 +1163,9 @@ fn parse_result_section(
         min_alive_generation: required_field(min_alive_generation, "min_alive_generation")?,
         total_births: required_field(total_births, "total_births")?,
         total_deaths: required_field(total_deaths, "total_deaths")?,
+        cycle_start_generation,
+        cycle_detected_generation,
+        cycle_period,
         initial_board_hash: required_field(initial_board_hash, "initial_board_hash")?,
         final_board_hash: required_field(final_board_hash, "final_board_hash")?,
     })

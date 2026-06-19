@@ -18,16 +18,17 @@ use game_of_life::persistence::{
     SCHEMA_VERSION, TOOL_VERSION,
 };
 use game_of_life::stats::{
-    run_statistics::RunStatus, terminal_status_for_outcome, AdvanceOutcome, RunStatistics,
-    RunStatisticsCollector,
+    run_statistics::RunStatus, terminal_status_for_outcome, AdvanceOutcome, CycleStatistics,
+    RunStatistics, RunStatisticsCollector,
 };
 use game_of_life::{
-    parse_cli_args, BlinkerBoardInitializer, BoardEditor, BoardInitializer, BoardSize,
-    BoardUpdater, BoardView, CellCoordinate, CellState, CliCommand, DemoBoardInitializer,
-    ExtractBoardConfig, FullyAliveInitializer, InMemoryBoard, InMemoryBoardCreationError,
-    InPlaceTransitionalUpdater, InitialBoardSource, InitialBoardSpec, IntegrityMode, LoadFrom,
-    RandomBoardInitializer, ReplayConfig, SaveSettings, SimulationConfig, StreamingBoard,
-    StreamingBoardCreationError, StreamingBoardParams,
+    parse_cli_args, BlinkerBoardInitializer, BoardEditor, BoardInitializer, BoardSignatureSource,
+    BoardSize, BoardUpdater, BoardView, CellCoordinate, CellState, CliCommand,
+    DemoBoardInitializer, ExtractBoardConfig, FullyAliveInitializer, InMemoryBoard,
+    InMemoryBoardCreationError, InPlaceTransitionalUpdater, InitialBoardSource, InitialBoardSpec,
+    IntegrityMode, LoadFrom, PatternAnalyzer, PatternBackend, PatternMatchDetails,
+    PatternObservation, RandomBoardInitializer, ReplayConfig, SaveSettings, SimulationConfig,
+    StreamingBoard, StreamingBoardCreationError, StreamingBoardParams,
 };
 
 const HELP_TEXT: &str = concat!(
@@ -280,18 +281,29 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
 
     let mut board = initial.board;
     let updater = InPlaceTransitionalUpdater;
-    let initial_alive_count = count_alive(&board);
+    let initial_signature = board
+        .board_signature()
+        .expect("in-memory board signatures are infallible");
+    let initial_alive_count = initial_signature.alive_count();
     let initial_board_for_record = board.clone();
     let mut collector = RunStatisticsCollector::starting_from(initial_alive_count);
     let mut terminal_status = (initial_alive_count == 0).then_some(RunStatus::Extinct);
+    let mut analyzer = PatternAnalyzer::in_memory_cycle_detection();
+    let mut cycle_stats: Option<CycleStatistics> = None;
+    if terminal_status.is_none() {
+        let observation =
+            PatternObservation::new(0, PatternBackend::InMemory, None, Some(&initial_signature));
+        analyzer.observe(&observation);
+    }
     let started = Instant::now();
     for _ in 0..max_iterations {
         if terminal_status.is_some() {
             break;
         }
-        let outcome: AdvanceOutcome = updater
-            .advance_generation(&mut board)
+        let summary = updater
+            .advance_generation_with_signature(&mut board)
             .expect("in-memory board updates are infallible");
+        let outcome: AdvanceOutcome = summary.outcome;
         let status = terminal_status_for_outcome(outcome);
         // A zero-change advance only proves the previous board was already
         // fixed-point stable; don't count the confirming no-op as work done.
@@ -300,11 +312,27 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
         }
         if let Some(status) = status {
             terminal_status = Some(status);
+        } else if let Some(signature) = summary.signature.as_ref() {
+            let observation = PatternObservation::new(
+                collector.iterations_run(),
+                PatternBackend::InMemory,
+                Some(outcome),
+                Some(signature),
+            );
+            if let Some(pattern_match) = analyzer.observe(&observation) {
+                let PatternMatchDetails::Cycle(cycle) = pattern_match.details;
+                cycle_stats = Some(CycleStatistics {
+                    start_generation: cycle.start_generation,
+                    detected_generation: cycle.detected_generation,
+                    period: cycle.period,
+                });
+                terminal_status = Some(RunStatus::Cyclic);
+            }
         }
     }
     let wall_time_ms = started.elapsed().as_millis() as u64;
     let status = terminal_status.unwrap_or(RunStatus::MaxIterations);
-    let stats = collector.finalize(status);
+    let stats = collector.finalize_with_cycle(status, cycle_stats);
 
     println!("Game of Life");
     println!("Board size: {board_size}");
@@ -712,25 +740,23 @@ fn generate_random_seed() -> u64 {
     hasher.finish()
 }
 
-fn count_alive(board: &InMemoryBoard) -> u64 {
-    use game_of_life::CellState;
-    let mut alive = 0u64;
-    for y in 0..board.height() {
-        for x in 0..board.width() {
-            if matches!(board.get(x, y), CellState::Alive) {
-                alive += 1;
+fn print_terminal_status_message(stats: &RunStatistics) {
+    match stats.status {
+        RunStatus::Stable => {
+            println!(
+                "Stable state reached at generation {}",
+                stats.iterations_run
+            );
+        }
+        RunStatus::Cyclic => {
+            if let Some(cycle) = stats.cycle {
+                println!(
+                    "Cycle detected at generation {}: period {} (first seen at generation {})",
+                    cycle.detected_generation, cycle.period, cycle.start_generation
+                );
             }
         }
-    }
-    alive
-}
-
-fn print_terminal_status_message(stats: &RunStatistics) {
-    if matches!(stats.status, RunStatus::Stable) {
-        println!(
-            "Stable state reached at generation {}",
-            stats.iterations_run
-        );
+        _ => {}
     }
 }
 
@@ -776,6 +802,9 @@ fn build_run_record(
             min_alive_generation: stats.min_alive_generation,
             total_births: stats.total_births,
             total_deaths: stats.total_deaths,
+            cycle_start_generation: stats.cycle.map(|cycle| cycle.start_generation),
+            cycle_detected_generation: stats.cycle.map(|cycle| cycle.detected_generation),
+            cycle_period: stats.cycle.map(|cycle| cycle.period),
             initial_board_hash,
             final_board_hash,
         },
@@ -902,16 +931,28 @@ fn replay(config: &ReplayConfig) -> Result<ReplayOutcome, ReplayError> {
 
     // Re-execute.
     let updater = InPlaceTransitionalUpdater;
-    let mut collector = RunStatisticsCollector::starting_from(count_alive(&board));
+    let initial_signature = board
+        .board_signature()
+        .expect("in-memory board signatures are infallible");
+    let mut collector = RunStatisticsCollector::starting_from(initial_signature.alive_count());
     let stop_on_stability = record.result.status == RunStatus::Stable.as_str();
+    let stop_on_cycle = record.result.status == RunStatus::Cyclic.as_str();
     let mut terminal_status = (collector.final_alive_count() == 0).then_some(RunStatus::Extinct);
+    let mut analyzer = PatternAnalyzer::in_memory_cycle_detection();
+    let mut cycle_stats: Option<CycleStatistics> = None;
+    if terminal_status.is_none() {
+        let observation =
+            PatternObservation::new(0, PatternBackend::InMemory, None, Some(&initial_signature));
+        analyzer.observe(&observation);
+    }
     for _ in 0..record.config.max_iterations {
         if terminal_status.is_some() {
             break;
         }
-        let outcome = updater
-            .advance_generation(&mut board)
+        let summary = updater
+            .advance_generation_with_signature(&mut board)
             .expect("in-memory board updates are infallible");
+        let outcome = summary.outcome;
         match terminal_status_for_outcome(outcome) {
             Some(RunStatus::Stable) if stop_on_stability => {
                 // New stable records exclude the no-op confirmation from
@@ -925,10 +966,34 @@ fn replay(config: &ReplayConfig) -> Result<ReplayOutcome, ReplayError> {
                 }
                 terminal_status = Some(status);
             }
-            None => collector.record(outcome),
+            None => {
+                collector.record(outcome);
+                if let Some(signature) = summary.signature.as_ref() {
+                    let observation = PatternObservation::new(
+                        collector.iterations_run(),
+                        PatternBackend::InMemory,
+                        Some(outcome),
+                        Some(signature),
+                    );
+                    if let Some(pattern_match) = analyzer.observe(&observation) {
+                        let PatternMatchDetails::Cycle(cycle) = pattern_match.details;
+                        if stop_on_cycle {
+                            cycle_stats = Some(CycleStatistics {
+                                start_generation: cycle.start_generation,
+                                detected_generation: cycle.detected_generation,
+                                period: cycle.period,
+                            });
+                            terminal_status = Some(RunStatus::Cyclic);
+                        }
+                    }
+                }
+            }
         }
     }
-    let recomputed = collector.finalize(terminal_status.unwrap_or(RunStatus::MaxIterations));
+    let recomputed = collector.finalize_with_cycle(
+        terminal_status.unwrap_or(RunStatus::MaxIterations),
+        cycle_stats,
+    );
 
     if board != record.final_board {
         diffs.push("final board differs".to_string());
@@ -962,6 +1027,30 @@ fn replay(config: &ReplayConfig) -> Result<ReplayOutcome, ReplayError> {
         diffs.push(format!(
             "final_alive_count differs: recorded={}, recomputed={}",
             record.result.final_alive_count, recomputed.final_alive_count
+        ));
+    }
+    if recomputed.cycle.map(|cycle| cycle.start_generation) != record.result.cycle_start_generation
+    {
+        diffs.push(format!(
+            "cycle_start_generation differs: recorded={:?}, recomputed={:?}",
+            record.result.cycle_start_generation,
+            recomputed.cycle.map(|cycle| cycle.start_generation)
+        ));
+    }
+    if recomputed.cycle.map(|cycle| cycle.detected_generation)
+        != record.result.cycle_detected_generation
+    {
+        diffs.push(format!(
+            "cycle_detected_generation differs: recorded={:?}, recomputed={:?}",
+            record.result.cycle_detected_generation,
+            recomputed.cycle.map(|cycle| cycle.detected_generation)
+        ));
+    }
+    if recomputed.cycle.map(|cycle| cycle.period) != record.result.cycle_period {
+        diffs.push(format!(
+            "cycle_period differs: recorded={:?}, recomputed={:?}",
+            record.result.cycle_period,
+            recomputed.cycle.map(|cycle| cycle.period)
         ));
     }
     if diffs.is_empty() {

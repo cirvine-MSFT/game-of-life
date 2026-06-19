@@ -21,9 +21,11 @@ use parking_lot::{Mutex, MutexGuard};
 use game_of_life::persistence::{write_board_snapshot, BoardSnapshot, BoardSnapshotWriteError};
 use game_of_life::stats::run_statistics::RunStatus;
 use game_of_life::{
-    terminal_status_for_outcome, BlinkerBoardInitializer, BoardInitializer, CellState,
-    DemoBoardInitializer, FullyAliveInitializer, InMemoryBoard, InMemoryBoardCreationError,
-    RandomBoardInitializer, RandomBoardInitializerError, RunStatistics, RunStatisticsCollector,
+    terminal_status_for_outcome, BlinkerBoardInitializer, BoardInitializer, BoardSignature,
+    CellState, CycleStatistics, DemoBoardInitializer, FullyAliveInitializer, InMemoryBoard,
+    InMemoryBoardCreationError, PatternAnalyzer, PatternBackend, PatternMatchDetails,
+    PatternObservation, RandomBoardInitializer, RandomBoardInitializerError, RunStatistics,
+    RunStatisticsCollector,
 };
 
 use crate::ipc_types::{
@@ -52,6 +54,7 @@ struct SessionData {
     max_iterations: u64,
     alive_history: Vec<u64>,
     stats: Option<RunStatisticsCollector>,
+    pattern_analyzer: Option<PatternAnalyzer>,
     final_stats: Option<RunStatistics>,
     save_path: Option<PathBuf>,
     dirty: bool,
@@ -71,6 +74,7 @@ impl SessionData {
             max_iterations: 0,
             alive_history: Vec::new(),
             stats: None,
+            pattern_analyzer: None,
             final_stats: None,
             save_path: None,
             dirty: false,
@@ -310,6 +314,7 @@ impl RunSession {
         data.max_iterations = max_iterations;
         data.alive_history = Vec::new();
         data.stats = None;
+        data.pattern_analyzer = None;
         data.final_stats = None;
         data.save_path = None;
         data.dirty = false;
@@ -410,11 +415,23 @@ impl RunSession {
         }
         let board = data.board.as_ref().ok_or(SessionError::NoBoard)?;
         let initial_snapshot: Vec<u8> = collect_cells(board);
-        let initial_alive_count = count_alive(&initial_snapshot);
+        let initial_signature =
+            BoardSignature::from_view(board).expect("InMemoryBoard signatures are infallible");
+        let initial_alive_count = initial_signature.alive_count();
+        let mut analyzer = PatternAnalyzer::in_memory_cycle_detection();
+        if initial_alive_count != 0 {
+            analyzer.observe(&PatternObservation::new(
+                0,
+                PatternBackend::InMemory,
+                None,
+                Some(&initial_signature),
+            ));
+        }
         data.initial_snapshot = Some(initial_snapshot);
         data.iteration = 0;
         data.alive_history = vec![initial_alive_count];
         data.stats = Some(RunStatisticsCollector::starting_from(initial_alive_count));
+        data.pattern_analyzer = Some(analyzer);
         data.final_stats = None;
         data.mode = Mode::Paused;
         data.jump_target = None;
@@ -445,10 +462,22 @@ impl RunSession {
             .ok_or(SessionError::NoInitialSnapshot)?;
         let board = data.board.as_mut().ok_or(SessionError::NoBoard)?;
         write_cells(board, &snapshot);
-        let initial_alive_count = count_alive(&snapshot);
+        let initial_signature =
+            BoardSignature::from_view(board).expect("InMemoryBoard signatures are infallible");
+        let initial_alive_count = initial_signature.alive_count();
+        let mut analyzer = PatternAnalyzer::in_memory_cycle_detection();
+        if initial_alive_count != 0 {
+            analyzer.observe(&PatternObservation::new(
+                0,
+                PatternBackend::InMemory,
+                None,
+                Some(&initial_signature),
+            ));
+        }
         data.iteration = 0;
         data.alive_history = vec![initial_alive_count];
         data.stats = Some(RunStatisticsCollector::starting_from(initial_alive_count));
+        data.pattern_analyzer = Some(analyzer);
         data.final_stats = None;
         data.mode = Mode::Paused;
         data.jump_target = None;
@@ -469,6 +498,7 @@ impl RunSession {
         data.iteration = 0;
         data.alive_history = Vec::new();
         data.stats = None;
+        data.pattern_analyzer = None;
         data.final_stats = None;
         data.jump_target = None;
         Ok(())
@@ -494,10 +524,16 @@ impl RunSession {
             .map(|s| matches!(s.status, RunStatus::MaxIterations))
             .unwrap_or(false);
         if was_at_max && new_total > data.iteration {
+            let restored_stats = if data.stats.is_none() {
+                data.final_stats
+                    .as_ref()
+                    .map(RunStatisticsCollector::from_statistics)
+            } else {
+                None
+            };
             data.final_stats = None;
-            if data.stats.is_none() {
-                let last_alive = data.alive_history.last().copied().unwrap_or(0);
-                data.stats = Some(RunStatisticsCollector::starting_from(last_alive));
+            if let Some(stats) = restored_stats {
+                data.stats = Some(stats);
             }
         }
         Ok(())
@@ -544,8 +580,11 @@ impl RunSession {
         if data.final_stats.is_some() {
             return Err(SessionError::RunCompleted);
         }
-        let board = data.board.as_mut().ok_or(SessionError::NoBoard)?;
-        let outcome = board.advance_generation();
+        let summary = {
+            let board = data.board.as_mut().ok_or(SessionError::NoBoard)?;
+            board.advance_generation_with_signature()
+        };
+        let outcome = summary.outcome;
 
         let total_cells = data.width as u64 * data.height as u64;
         let terminal_status = terminal_status_for_outcome(outcome);
@@ -568,15 +607,45 @@ impl RunSession {
         data.push_history(outcome.alive_count);
 
         let tick = AdvanceTick::from_outcome(data.iteration, total_cells, outcome);
+        let cycle_stats = if terminal_status.is_none() {
+            let generation = data.iteration;
+            match (data.pattern_analyzer.as_mut(), summary.signature.as_ref()) {
+                (Some(analyzer), Some(signature)) => {
+                    let observation = PatternObservation::new(
+                        generation,
+                        PatternBackend::InMemory,
+                        Some(outcome),
+                        Some(signature),
+                    );
+                    analyzer.observe(&observation).map(|pattern_match| {
+                        let PatternMatchDetails::Cycle(cycle) = pattern_match.details;
+                        CycleStatistics {
+                            start_generation: cycle.start_generation,
+                            detected_generation: cycle.detected_generation,
+                            period: cycle.period,
+                        }
+                    })
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
 
         // Terminal-state detection: extinction/stability takes priority over
         // the iteration ceiling so the more specific status wins on edge
         // cases where both happen on the same generation.
         let hit_cap = data.iteration >= data.max_iterations;
-        if terminal_status.is_some() || hit_cap {
-            let status = terminal_status.unwrap_or(RunStatus::MaxIterations);
+        if terminal_status.is_some() || cycle_stats.is_some() || hit_cap {
+            let status = terminal_status.unwrap_or_else(|| {
+                if cycle_stats.is_some() {
+                    RunStatus::Cyclic
+                } else {
+                    RunStatus::MaxIterations
+                }
+            });
             if let Some(stats) = data.stats.take() {
-                data.final_stats = Some(stats.finalize(status));
+                data.final_stats = Some(stats.finalize_with_cycle(status, cycle_stats));
             }
             data.mode = Mode::Paused;
             self.cancel.store(false, Ordering::SeqCst);
@@ -651,10 +720,6 @@ fn write_cells(board: &mut InMemoryBoard, bytes: &[u8]) {
             board.set(x, y, state);
         }
     }
-}
-
-fn count_alive(bytes: &[u8]) -> u64 {
-    bytes.iter().filter(|&&b| b != 0).count() as u64
 }
 
 /// Errors any session method can surface across the IPC boundary.

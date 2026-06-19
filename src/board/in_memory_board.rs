@@ -4,7 +4,10 @@ use std::mem;
 
 use crate::algorithms::{BoardUpdater, InPlaceTransitionalUpdater};
 
-use super::{BoardEditor, BoardView, CellCoordinate, CellState};
+use super::{
+    BoardEditor, BoardSignature, BoardSignatureSource, BoardView, CellCoordinate, CellState,
+    GenerationSummary,
+};
 
 /// In-memory Game of Life board with finite boundaries.
 ///
@@ -89,6 +92,12 @@ impl InMemoryBoard {
     pub fn advance_generation(&mut self) -> crate::stats::AdvanceOutcome {
         InPlaceTransitionalUpdater
             .advance_generation(self)
+            .expect("in-memory board updates are infallible")
+    }
+
+    pub fn advance_generation_with_signature(&mut self) -> GenerationSummary {
+        InPlaceTransitionalUpdater
+            .advance_generation_with_signature(self)
             .expect("in-memory board updates are infallible")
     }
 }
@@ -205,6 +214,14 @@ impl BoardView for InMemoryBoard {
 
     fn cell_state(&self, coordinate: CellCoordinate) -> Result<CellState, Self::Error> {
         Ok(self.get(coordinate.x, coordinate.y))
+    }
+}
+
+impl BoardSignatureSource for InMemoryBoard {
+    type Error = Infallible;
+
+    fn board_signature(&mut self) -> Result<BoardSignature, Self::Error> {
+        BoardSignature::from_view(self)
     }
 }
 
