@@ -157,8 +157,8 @@ mod normal_tests {
         assert!(stderr(&output).is_empty());
 
         let stdout = stdout(&output);
-        assert!(stdout.contains("Stable state reached at generation 1"));
-        assert!(stdout.contains("Simulation complete: 1 iterations (stable)"));
+        assert!(stdout.contains("Stable state reached at generation 0"));
+        assert!(stdout.contains("Simulation complete: 0 iterations (stable)"));
     }
 
     #[test]

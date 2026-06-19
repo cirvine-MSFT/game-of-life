@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SessionInfo } from "../ipc";
+import type { BoardTick, SessionInfo } from "../ipc";
 
 // We mock the entire IPC module so the store can be exercised without a
 // Tauri runtime. The setup file already mocks @tauri-apps/api/core +
@@ -137,6 +137,53 @@ describe("connect()", () => {
     const callsAfter = vi.mocked(ipc.getSession).mock.calls.length;
 
     expect(callsAfter).toBe(callsBefore);
+  });
+
+  it("appends history and advances session iteration for generation ticks", async () => {
+    let boardTickHandler: ((tick: BoardTick) => void) | undefined;
+    vi.mocked(ipc.getSession).mockResolvedValueOnce(populatedSession);
+    vi.mocked(ipc.getAliveHistory).mockResolvedValueOnce([3]);
+    vi.mocked(ipc.onBoardTick).mockImplementationOnce(async (handler) => {
+      boardTickHandler = handler;
+      return () => undefined;
+    });
+
+    await useStore.getState().connect();
+    boardTickHandler?.({
+      iteration: 1,
+      alive: 4,
+      dead: 5,
+      births: 1,
+      deaths: 0,
+      board: { width: 3, height: 3, iteration: 1, cellsBase64: "AQEAAQAAAAAAAA==" },
+    });
+
+    expect(useStore.getState().session?.iteration).toBe(1);
+    expect(useStore.getState().history).toEqual([3, 4]);
+  });
+
+  it("does not append history for stable confirmation ticks at the current iteration", async () => {
+    let boardTickHandler: ((tick: BoardTick) => void) | undefined;
+    vi.mocked(ipc.getSession).mockResolvedValueOnce(populatedSession);
+    vi.mocked(ipc.getAliveHistory).mockResolvedValueOnce([4]);
+    vi.mocked(ipc.onBoardTick).mockImplementationOnce(async (handler) => {
+      boardTickHandler = handler;
+      return () => undefined;
+    });
+
+    await useStore.getState().connect();
+    boardTickHandler?.({
+      iteration: 0,
+      alive: 4,
+      dead: 0,
+      births: 0,
+      deaths: 0,
+      board: { width: 2, height: 2, iteration: 0, cellsBase64: "AQEBAQ==" },
+    });
+
+    expect(useStore.getState().session?.iteration).toBe(0);
+    expect(useStore.getState().latestTick).toMatchObject({ iteration: 0, alive: 4 });
+    expect(useStore.getState().history).toEqual([4]);
   });
 });
 

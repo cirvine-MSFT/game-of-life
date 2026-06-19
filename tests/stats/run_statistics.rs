@@ -46,13 +46,12 @@ fn collector_records_extinction() {
 }
 
 #[test]
-fn collector_records_stability() {
-    let mut collector = RunStatisticsCollector::starting_from(4);
-    collector.record(AdvanceOutcome::from_counts(0, 0, 4));
+fn collector_can_finalize_stability_without_counting_confirmation() {
+    let collector = RunStatisticsCollector::starting_from(4);
     let stats = collector.finalize(RunStatus::Stable);
     assert_eq!(stats.status, RunStatus::Stable);
     assert_eq!(stats.final_alive_count, 4);
-    assert_eq!(stats.iterations_run, 1);
+    assert_eq!(stats.iterations_run, 0);
 }
 
 #[test]

@@ -536,10 +536,9 @@ impl RunSession {
         self.lock().dirty = dirty;
     }
 
-    /// Advances by exactly one generation. Returns the per-generation
-    /// tick payload; the caller is responsible for emitting events.
-    /// Sets terminal state and stops the run if max_iterations, extinction,
-    /// or fixed-point stability is reached.
+    /// Advances by exactly one generation. A no-op advance is treated as a
+    /// stability confirmation for the previous board, so it finalizes the run
+    /// without incrementing the visible iteration counter.
     pub fn advance_one(&self) -> Result<AdvanceTick, SessionError> {
         let mut data = self.lock();
         if data.final_stats.is_some() {
@@ -549,6 +548,18 @@ impl RunSession {
         let outcome = board.advance_generation();
 
         let total_cells = data.width as u64 * data.height as u64;
+        let terminal_status = terminal_status_for_outcome(outcome);
+        if outcome.is_stable() {
+            let tick = AdvanceTick::from_outcome(data.iteration, total_cells, outcome);
+            if let Some(stats) = data.stats.take() {
+                let status = terminal_status.unwrap_or(RunStatus::Stable);
+                data.final_stats = Some(stats.finalize(status));
+            }
+            data.mode = Mode::Paused;
+            self.cancel.store(false, Ordering::SeqCst);
+            return Ok(tick);
+        }
+
         data.iteration += 1;
 
         if let Some(stats) = data.stats.as_mut() {
@@ -561,7 +572,6 @@ impl RunSession {
         // Terminal-state detection: extinction/stability takes priority over
         // the iteration ceiling so the more specific status wins on edge
         // cases where both happen on the same generation.
-        let terminal_status = terminal_status_for_outcome(outcome);
         let hit_cap = data.iteration >= data.max_iterations;
         if terminal_status.is_some() || hit_cap {
             let status = terminal_status.unwrap_or(RunStatus::MaxIterations);

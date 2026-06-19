@@ -138,7 +138,7 @@ The fully alive source is useful for exercising overpopulation behavior, but it 
 - Shows concise run information
 - Advances until the configured maximum iteration count, extinction, or fixed-point stability
 - Prints the final board state only
-- Reports `Stable state reached at generation N` when a completed generation has zero births and zero deaths
+- Reports `Stable state reached at generation N` when a no-op attempted generation confirms generation `N` was already fixed-point stable
 - Uses ASCII characters (`#` for alive, `.` for dead) for platform-neutral console output
 
 Stable-state detection deliberately means fixed-point still-life detection, not period-greater-than-1 cycle detection. Oscillators such as blinkers and toads still run to the configured maximum unless they become extinct. A fully dead board is terminal under Conway's B3/S23 rule because births require exactly three live neighbors, so extinction is safe to treat as an early stop.
@@ -234,7 +234,7 @@ Recorded statistics: `status` (`extinct` / `stable` / `max_iterations`; `cyclic`
 Two terminal conditions can stop a run before `max_iterations`:
 
 1. **Extinction**: if every cell is dead at generation 0 or after a generation, the run stops with `status: extinct`. A dead board cannot resurrect under B3/S23 because every dead cell has zero live neighbors, not the three required for birth.
-2. **Fixed-point stability**: if a completed non-extinct generation reports `births == 0` and `deaths == 0`, the run stops with `status: stable`. `iterations_run` records the confirming generation `N`, meaning generation `N` matched generation `N - 1`.
+2. **Fixed-point stability**: if an attempted non-extinct generation reports `births == 0` and `deaths == 0`, the run stops with `status: stable`. That no-op attempt is a confirmation, not useful simulation work, so `iterations_run` records the previous generation `N` whose board was confirmed stable. A still-life initial board therefore reports `iterations_run: 0`.
 
 Cycle detection remains deferred. Period-greater-than-1 oscillators and spaceships are not `stable` for this feature because they continue to produce births and deaths between generations. A future pattern-analysis module can own cycle detection and other interesting recurring Game of Life behaviors.
 

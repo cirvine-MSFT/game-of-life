@@ -11,6 +11,10 @@ these were saved with `--save-run <PATH>` to keep the demo readable.
 | `block-2x2-stable.gol` | 2x2 fully alive (still life) | `stable` |
 | `blinker-5x5-max-iterations.gol` | 5x5 blinker, 6 iterations (oscillator, not classified as stable) | `max_iterations` |
 
+The stable block records `iterations_run: 0`: the first attempted advance is a
+no-op confirmation that the initial board was already stable, so it is not
+counted as a completed generation.
+
 Replay any of them with:
 
 ```pwsh

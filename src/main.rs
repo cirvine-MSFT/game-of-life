@@ -292,8 +292,13 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
         let outcome: AdvanceOutcome = updater
             .advance_generation(&mut board)
             .expect("in-memory board updates are infallible");
-        collector.record(outcome);
-        if let Some(status) = terminal_status_for_outcome(outcome) {
+        let status = terminal_status_for_outcome(outcome);
+        // A zero-change advance only proves the previous board was already
+        // fixed-point stable; don't count the confirming no-op as work done.
+        if !outcome.is_stable() {
+            collector.record(outcome);
+        }
+        if let Some(status) = status {
             terminal_status = Some(status);
         }
     }
@@ -433,8 +438,13 @@ fn run_streaming_simulation(config: SimulationConfig) -> Result<(), RunSimulatio
                     operation: "advancing streaming board generation",
                     source: e,
                 })?;
-        collector.record(outcome);
-        if let Some(status) = terminal_status_for_outcome(outcome) {
+        let status = terminal_status_for_outcome(outcome);
+        // A zero-change advance only proves the previous board was already
+        // fixed-point stable; don't count the confirming no-op as work done.
+        if !outcome.is_stable() {
+            collector.record(outcome);
+        }
+        if let Some(status) = status {
             terminal_status = Some(status);
         }
     }
@@ -902,11 +912,20 @@ fn replay(config: &ReplayConfig) -> Result<ReplayOutcome, ReplayError> {
         let outcome = updater
             .advance_generation(&mut board)
             .expect("in-memory board updates are infallible");
-        collector.record(outcome);
         match terminal_status_for_outcome(outcome) {
-            Some(RunStatus::Stable) if !stop_on_stability => {}
-            Some(status) => terminal_status = Some(status),
-            None => {}
+            Some(RunStatus::Stable) if stop_on_stability => {
+                // New stable records exclude the no-op confirmation from
+                // iterations_run; legacy max_iterations records keep replaying.
+                terminal_status = Some(RunStatus::Stable);
+            }
+            Some(RunStatus::Stable) => collector.record(outcome),
+            Some(status) => {
+                if !outcome.is_stable() {
+                    collector.record(outcome);
+                }
+                terminal_status = Some(status);
+            }
+            None => collector.record(outcome),
         }
     }
     let recomputed = collector.finalize(terminal_status.unwrap_or(RunStatus::MaxIterations));
