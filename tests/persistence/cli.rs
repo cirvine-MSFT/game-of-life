@@ -227,6 +227,40 @@ mod save_load_tests {
             "expected stderr warning naming both flags; got:\n{stderr_text}"
         );
     }
+
+    #[test]
+    fn loaded_board_that_becomes_stable_reports_previous_generation() {
+        let dir = unique_temp_dir("load_snapshot_becomes_stable");
+        let snap_path = dir.join("l-shape.gol");
+        std::fs::write(
+            &snap_path,
+            "GOL-BOARD-SNAPSHOT v1\nschema_version: 1\ncreated_at: 2026-06-12T22:55:20Z\n\n----- BEGIN BOARD -----\nsize: 3x3\nencoding: ascii\nalive_count: 3\ndead_count: 6\n##.\n#..\n...\n----- END BOARD -----\n",
+        )
+        .unwrap();
+
+        let output = run_cli(&[
+            "--load-board",
+            snap_path.to_str().unwrap(),
+            "--max-iterations",
+            "10",
+            "--no-save",
+        ]);
+
+        assert!(output.status.success(), "stderr: {}", stderr(&output));
+        let stdout_text = stdout(&output);
+        assert!(
+            stdout_text.contains("Stable state reached at generation 1"),
+            "stdout:\n{stdout_text}"
+        );
+        assert!(
+            stdout_text.contains("Simulation complete: 1 iterations (stable)"),
+            "stdout:\n{stdout_text}"
+        );
+        assert!(
+            stdout_text.contains("Final board state:\n##.\n##.\n...\n"),
+            "stdout:\n{stdout_text}"
+        );
+    }
 }
 
 mod continuation_tests {
@@ -483,6 +517,60 @@ mod replay_tests {
         ]);
         let source = one_run_record_in(&runs_dir);
         let output = run_cli(&["--replay", source.to_str().unwrap()]);
+        assert!(output.status.success(), "stderr: {}", stderr(&output));
+        assert!(stdout(&output).contains("Replay matched"));
+    }
+
+    #[test]
+    fn stable_run_record_replays_successfully() {
+        let dir = unique_temp_dir("replay_stable");
+        let runs_dir = dir.join("runs");
+        let run = run_cli(&[
+            "--board-size",
+            "2x2",
+            "--max-iterations",
+            "10",
+            "--initial-board",
+            "alive",
+            "--runs-dir",
+            runs_dir.to_str().unwrap(),
+        ]);
+        assert!(run.status.success(), "stderr: {}", stderr(&run));
+        let source = one_run_record_in(&runs_dir);
+        let body = std::fs::read_to_string(&source).unwrap();
+        assert!(body.contains("status: stable"), "body:\n{body}");
+        assert!(body.contains("iterations_run: 0"), "body:\n{body}");
+
+        let output = run_cli(&["--replay", source.to_str().unwrap()]);
+
+        assert!(output.status.success(), "stderr: {}", stderr(&output));
+        assert!(stdout(&output).contains("Replay matched"));
+    }
+
+    #[test]
+    fn legacy_max_iterations_record_for_stable_board_still_replays() {
+        let dir = unique_temp_dir("replay_legacy_stable");
+        let runs_dir = dir.join("runs");
+        let run = run_cli(&[
+            "--board-size",
+            "2x2",
+            "--max-iterations",
+            "10",
+            "--initial-board",
+            "alive",
+            "--runs-dir",
+            runs_dir.to_str().unwrap(),
+        ]);
+        assert!(run.status.success(), "stderr: {}", stderr(&run));
+        let source = one_run_record_in(&runs_dir);
+        let body = std::fs::read_to_string(&source).unwrap();
+        let legacy_body = body
+            .replacen("status: stable", "status: max_iterations", 1)
+            .replacen("iterations_run: 0", "iterations_run: 10", 1);
+        std::fs::write(&source, legacy_body).unwrap();
+
+        let output = run_cli(&["--replay", source.to_str().unwrap(), "--ignore-integrity"]);
+
         assert!(output.status.success(), "stderr: {}", stderr(&output));
         assert!(stdout(&output).contains("Replay matched"));
     }

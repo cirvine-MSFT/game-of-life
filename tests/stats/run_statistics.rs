@@ -2,7 +2,7 @@
 //! collector).
 
 use game_of_life::stats::run_statistics::RunStatus;
-use game_of_life::stats::{AdvanceOutcome, RunStatisticsCollector};
+use game_of_life::stats::{terminal_status_for_outcome, AdvanceOutcome, RunStatisticsCollector};
 
 #[test]
 fn collector_starts_with_initial_alive_count_as_peak_and_min() {
@@ -46,7 +46,39 @@ fn collector_records_extinction() {
 }
 
 #[test]
+fn collector_can_finalize_stability_without_counting_confirmation() {
+    let collector = RunStatisticsCollector::starting_from(4);
+    let stats = collector.finalize(RunStatus::Stable);
+    assert_eq!(stats.status, RunStatus::Stable);
+    assert_eq!(stats.final_alive_count, 4);
+    assert_eq!(stats.iterations_run, 0);
+}
+
+#[test]
+fn terminal_status_prioritizes_extinction_over_stability() {
+    let extinct = AdvanceOutcome::from_counts(0, 0, 0);
+    assert_eq!(
+        terminal_status_for_outcome(extinct),
+        Some(RunStatus::Extinct)
+    );
+
+    let stable = AdvanceOutcome::from_counts(0, 0, 4);
+    assert_eq!(terminal_status_for_outcome(stable), Some(RunStatus::Stable));
+
+    let active = AdvanceOutcome::from_counts(1, 1, 4);
+    assert_eq!(terminal_status_for_outcome(active), None);
+}
+
+#[test]
+fn outcome_stability_depends_on_births_and_deaths() {
+    assert!(AdvanceOutcome::from_counts(0, 0, 4).is_stable());
+    assert!(!AdvanceOutcome::from_counts(1, 0, 5).is_stable());
+    assert!(!AdvanceOutcome::from_counts(0, 1, 3).is_stable());
+}
+
+#[test]
 fn status_string_representations() {
     assert_eq!(RunStatus::MaxIterations.as_str(), "max_iterations");
     assert_eq!(RunStatus::Extinct.as_str(), "extinct");
+    assert_eq!(RunStatus::Stable.as_str(), "stable");
 }

@@ -174,6 +174,7 @@ pub struct RunCompleted {
 pub enum IpcRunStatus {
     MaxIterations,
     Extinct,
+    Stable,
 }
 
 impl IpcRunStatus {
@@ -181,6 +182,7 @@ impl IpcRunStatus {
         match status {
             RunStatus::MaxIterations => IpcRunStatus::MaxIterations,
             RunStatus::Extinct => IpcRunStatus::Extinct,
+            RunStatus::Stable => IpcRunStatus::Stable,
         }
     }
 }

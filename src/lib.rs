@@ -30,4 +30,6 @@ pub use config::{
     IntegrityMode, IterationParseError, LoadFrom, LoadFromParseError, MemorySizeParseError,
     ReplayConfig, SaveSettings, SimulationConfig, DEFAULT_MAX_BOARD_MEMORY_BYTES, DEFAULT_RUNS_DIR,
 };
-pub use stats::{AdvanceOutcome, RunStatistics, RunStatisticsCollector};
+pub use stats::{
+    terminal_status_for_outcome, AdvanceOutcome, RunStatistics, RunStatisticsCollector,
+};

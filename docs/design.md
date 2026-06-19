@@ -136,9 +136,12 @@ The fully alive source is useful for exercising overpopulation behavior, but it 
 
 **Output**:
 - Shows concise run information
-- Advances to the configured maximum iteration count
+- Advances until the configured maximum iteration count, extinction, or fixed-point stability
 - Prints the final board state only
+- Reports `Stable state reached at generation N` when a no-op attempted generation confirms generation `N` was already fixed-point stable
 - Uses ASCII characters (`#` for alive, `.` for dead) for platform-neutral console output
+
+Stable-state detection deliberately means fixed-point still-life detection, not period-greater-than-1 cycle detection. Oscillators such as blinkers and toads still run to the configured maximum unless they become extinct. A fully dead board is terminal under Conway's B3/S23 rule because births require exactly three live neighbors, so extinction is safe to treat as an early stop.
 
 **Determinism**: The default demo and blinker patterns are deterministic, ensuring consistent smoke-test output. The `random` source intentionally generates a fresh random board each run; future save/resume work should persist the generated initial state when reproducibility is needed.
 
@@ -224,11 +227,16 @@ The `[result]` section of every run record also carries `initial_board_hash` and
 
 A `RunStatisticsCollector` observes one `AdvanceOutcome` per generation (births, deaths, alive count) and finalizes into a `RunStatistics` value at end of run. The updater reports `AdvanceOutcome` directly from the normalize pass, so stats are O(1) per generation with no extra full-board scan.
 
-Recorded statistics: `status` (`extinct` / `max_iterations`; `stable` and `cyclic` are reserved for the cycle-detection follow-up), `iterations_run`, `wall_time_ms`, `initial_alive_count`, `final_alive_count`, `peak_alive_count`, `peak_alive_generation`, `min_alive_count`, `min_alive_generation`, `total_births`, `total_deaths`.
+Recorded statistics: `status` (`extinct` / `stable` / `max_iterations`; `cyclic` is reserved for a future cycle-detection follow-up), `iterations_run`, `wall_time_ms`, `initial_alive_count`, `final_alive_count`, `peak_alive_count`, `peak_alive_generation`, `min_alive_count`, `min_alive_generation`, `total_births`, `total_deaths`.
 
 ### Early-stop conditions
 
-Only one: **extinction**. If every cell is dead after a generation, the run early-stops with `status: extinct`. Cycle and still-life detection are deferred to a follow-up PR; the format reserves the `stable` and `cyclic` status values so old files stay forward-compatible.
+Two terminal conditions can stop a run before `max_iterations`:
+
+1. **Extinction**: if every cell is dead at generation 0 or after a generation, the run stops with `status: extinct`. A dead board cannot resurrect under B3/S23 because every dead cell has zero live neighbors, not the three required for birth.
+2. **Fixed-point stability**: if an attempted non-extinct generation reports `births == 0` and `deaths == 0`, the run stops with `status: stable`. That no-op attempt is a confirmation, not useful simulation work, so `iterations_run` records the previous generation `N` whose board was confirmed stable. A still-life initial board therefore reports `iterations_run: 0`.
+
+Cycle detection remains deferred. Period-greater-than-1 oscillators and spaceships are not `stable` for this feature because they continue to produce births and deaths between generations. A future pattern-analysis module can own cycle detection and other interesting recurring Game of Life behaviors.
 
 ### CLI surface
 
@@ -243,7 +251,7 @@ Only one: **extinction**. If every cell is dead after a generation, the run earl
 ### Deferred (future PRs)
 
 - **Streaming board** ✅ — shipped in the streaming PR. See [Streaming Board for Very Large Boards](#streaming-board-for-very-large-boards) below.
-- **Cycle and still-life detection** — adds `status: stable` and `status: cyclic` to the writer. Format already reserves them.
+- **Cycle detection** — adds `status: cyclic` to the writer for period-greater-than-1 repeats. Format already reserves it.
 - **Cryptographic signing** — separate from the integrity check above; would need adversarial threat model.
 
 ## Streaming Board for Very Large Boards

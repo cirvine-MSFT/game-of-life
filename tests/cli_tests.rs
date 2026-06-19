@@ -140,6 +140,46 @@ mod normal_tests {
         assert!(stdout.contains("Initial board: random"));
         assert!(stdout.contains("Final board state:"));
     }
+
+    #[test]
+    fn stable_run_stops_before_max_iterations() {
+        let output = run_cli(&[
+            "--board-size",
+            "2x2",
+            "--max-iterations",
+            "10",
+            "--initial-board",
+            "alive",
+            "--no-save",
+        ]);
+
+        assert!(output.status.success());
+        assert!(stderr(&output).is_empty());
+
+        let stdout = stdout(&output);
+        assert!(stdout.contains("Stable state reached at generation 0"));
+        assert!(stdout.contains("Simulation complete: 0 iterations (stable)"));
+    }
+
+    #[test]
+    fn oscillator_run_does_not_stop_as_stable() {
+        let output = run_cli(&[
+            "--board-size",
+            "5x5",
+            "--max-iterations",
+            "2",
+            "--initial-board",
+            "blinker",
+            "--no-save",
+        ]);
+
+        assert!(output.status.success());
+        assert!(stderr(&output).is_empty());
+
+        let stdout = stdout(&output);
+        assert!(!stdout.contains("Stable state reached"));
+        assert!(stdout.contains("Simulation complete: 2 iterations (max_iterations)"));
+    }
 }
 
 mod edge_case_tests {

@@ -23,4 +23,8 @@ impl AdvanceOutcome {
             alive_count,
         }
     }
+
+    pub fn is_stable(self) -> bool {
+        self.births == 0 && self.deaths == 0
+    }
 }

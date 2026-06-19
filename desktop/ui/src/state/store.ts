@@ -153,7 +153,13 @@ export const useStore = create<AppState>((set, get) => ({
       // the earlier-resolved unlisten functions on a later rejection.
       localUnlistens.push(
         await onBoardTick((tick) => {
+          const currentSession = get().session;
+          const shouldRecordHistory =
+            currentSession === null || tick.iteration > currentSession.iteration;
           set({
+            session: currentSession
+              ? { ...currentSession, iteration: tick.iteration }
+              : currentSession,
             board: decodeBoard(tick.board),
             latestTick: {
               iteration: tick.iteration,
@@ -162,7 +168,7 @@ export const useStore = create<AppState>((set, get) => ({
               births: tick.births,
               deaths: tick.deaths,
             },
-            history: [...get().history, tick.alive],
+            history: shouldRecordHistory ? [...get().history, tick.alive] : get().history,
           });
         }),
       );

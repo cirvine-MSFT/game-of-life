@@ -4,4 +4,4 @@ pub mod advance_outcome;
 pub mod run_statistics;
 
 pub use advance_outcome::AdvanceOutcome;
-pub use run_statistics::{RunStatistics, RunStatisticsCollector};
+pub use run_statistics::{terminal_status_for_outcome, RunStatistics, RunStatisticsCollector};
