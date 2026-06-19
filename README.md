@@ -2,6 +2,10 @@
 
 An interview-style Conway's Game of Life project designed to start small and grow over time.
 
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
 ## Project goals
 
 - Model the rules of Conway's Game of Life clearly.
