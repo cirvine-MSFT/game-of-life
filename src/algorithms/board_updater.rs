@@ -1,4 +1,5 @@
 use crate::board::BoardEditor;
+use crate::board::GenerationSummary;
 use crate::stats::AdvanceOutcome;
 
 /// Interface for algorithms that advance a board by one generation.
@@ -17,4 +18,9 @@ pub trait BoardUpdater {
         &self,
         board: &mut B,
     ) -> Result<AdvanceOutcome, B::Error>;
+
+    fn advance_generation_with_signature<B: BoardEditor + ?Sized>(
+        &self,
+        board: &mut B,
+    ) -> Result<GenerationSummary, B::Error>;
 }

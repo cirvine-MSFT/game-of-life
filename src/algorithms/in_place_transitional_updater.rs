@@ -1,5 +1,5 @@
 use crate::algorithms::CellRule;
-use crate::board::BoardEditor;
+use crate::board::{BoardEditor, GenerationSummary};
 use crate::stats::AdvanceOutcome;
 
 use super::BoardUpdater;
@@ -30,5 +30,12 @@ impl BoardUpdater for InPlaceTransitionalUpdater {
         board: &mut B,
     ) -> Result<AdvanceOutcome, B::Error> {
         board.advance_with_rule(self)
+    }
+
+    fn advance_generation_with_signature<B: BoardEditor + ?Sized>(
+        &self,
+        board: &mut B,
+    ) -> Result<GenerationSummary, B::Error> {
+        board.advance_with_rule_and_signature(self)
     }
 }

@@ -51,6 +51,9 @@ use std::path::{Path, PathBuf};
 
 use crate::algorithms::CellRule;
 use crate::board::{BoardEditor, BoardView, CellCoordinate, CellState, InMemoryBoard};
+use crate::board::{
+    BoardSignature, BoardSignatureAccumulator, BoardSignatureSource, GenerationSummary,
+};
 use crate::persistence::scratch::{ScratchFile, ScratchFileError};
 use crate::stats::AdvanceOutcome;
 
@@ -662,6 +665,29 @@ impl BoardEditor for StreamingBoard {
         // Normalize pass over all chunk positions; tallies outcome.
         let outcome = self.iter_chunks_for_normalize()?;
         Ok(outcome)
+    }
+
+    fn advance_with_rule_and_signature(
+        &mut self,
+        rule: &dyn CellRule,
+    ) -> Result<GenerationSummary, Self::Error> {
+        Ok(GenerationSummary::new(self.advance_with_rule(rule)?, None))
+    }
+}
+
+impl BoardSignatureSource for StreamingBoard {
+    type Error = ScratchFileError;
+
+    fn board_signature(&mut self) -> Result<BoardSignature, Self::Error> {
+        let mut accumulator = BoardSignatureAccumulator::new(self.board_width, self.board_height);
+        for y in 0..self.board_height {
+            for x in 0..self.board_width {
+                let coordinate = CellCoordinate::new(x, y);
+                let state = self.peek_cell(coordinate)?;
+                accumulator.observe(coordinate, state);
+            }
+        }
+        Ok(accumulator.finish())
     }
 }
 

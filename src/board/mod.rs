@@ -5,6 +5,7 @@ mod cell_state;
 mod coordinate;
 mod editor;
 mod in_memory_board;
+mod signature;
 mod streaming_board;
 mod view;
 
@@ -13,6 +14,9 @@ pub use cell_state::CellState;
 pub use coordinate::CellCoordinate;
 pub use editor::{default_advance_with_rule, BoardEditor};
 pub use in_memory_board::{InMemoryBoard, InMemoryBoardCreationError};
+pub use signature::{
+    BoardSignature, BoardSignatureAccumulator, BoardSignatureSource, GenerationSummary,
+};
 pub use streaming_board::{
     derive_chunk_dimensions, StreamingBoard, StreamingBoardCreationError, StreamingBoardParams,
 };

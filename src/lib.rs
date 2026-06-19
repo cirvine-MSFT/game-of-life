@@ -9,6 +9,7 @@
 pub mod algorithms;
 pub mod board;
 pub mod config;
+pub mod pattern_analysis;
 pub mod persistence;
 pub mod stats;
 
@@ -19,10 +20,11 @@ pub use algorithms::{
     MAX_ALIVE_CELLS_PER_THOUSAND,
 };
 pub use board::{
-    default_advance_with_rule, derive_chunk_dimensions, BoardEditor, BoardSize,
-    BoardSizeParseError, BoardView, CellCoordinate, CellState, InMemoryBoard,
-    InMemoryBoardCreationError, StreamingBoard, StreamingBoardCreationError, StreamingBoardParams,
-    DEFAULT_BOARD_HEIGHT, DEFAULT_BOARD_WIDTH,
+    default_advance_with_rule, derive_chunk_dimensions, BoardEditor, BoardSignature,
+    BoardSignatureAccumulator, BoardSignatureSource, BoardSize, BoardSizeParseError, BoardView,
+    CellCoordinate, CellState, GenerationSummary, InMemoryBoard, InMemoryBoardCreationError,
+    StreamingBoard, StreamingBoardCreationError, StreamingBoardParams, DEFAULT_BOARD_HEIGHT,
+    DEFAULT_BOARD_WIDTH,
 };
 pub use config::{
     parse_cli_args, parse_memory_size, CliCommand, ConfigError, ContinuationBudget,
@@ -30,6 +32,11 @@ pub use config::{
     IntegrityMode, IterationParseError, LoadFrom, LoadFromParseError, MemorySizeParseError,
     ReplayConfig, SaveSettings, SimulationConfig, DEFAULT_MAX_BOARD_MEMORY_BYTES, DEFAULT_RUNS_DIR,
 };
+pub use pattern_analysis::{
+    CycleDetector, CyclePattern, PatternAnalyzer, PatternBackend, PatternDetector, PatternKind,
+    PatternMatch, PatternMatchDetails, PatternObservation, PatternSpan,
+};
 pub use stats::{
-    terminal_status_for_outcome, AdvanceOutcome, RunStatistics, RunStatisticsCollector,
+    terminal_status_for_outcome, AdvanceOutcome, CycleStatistics, RunStatistics,
+    RunStatisticsCollector,
 };

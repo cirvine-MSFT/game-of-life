@@ -74,7 +74,7 @@ cargo build --release
 
 The console app prints concise run information and the final board state only. Per-generation board output is intentionally omitted for now to keep runs readable.
 
-Runs stop early when they become extinct or when an attempted generation has no births and no deaths. The latter confirms the previous board was a fixed-point still-life state, reported as `stable`; the no-op confirmation itself is not counted in `iterations_run`. Repeating cycles such as blinkers still run to `--max-iterations` unless they become extinct. A fully dead board cannot come back alive under Conway's B3/S23 rule because births require exactly three live neighbors.
+Runs stop early when they become extinct, become fixed-point stable, or repeat an exact prior board state. Stable no-op confirmations are reported at the previous generation and are not counted in `iterations_run`; cyclic runs stop at the repeated generation and include cycle start, detection generation, and period metadata. A fully dead board cannot come back alive under Conway's B3/S23 rule because births require exactly three live neighbors.
 
 ### Command-line options
 
@@ -219,7 +219,7 @@ To continue a run for more generations (with full provenance recorded):
   2. **Normalize Pass**: Convert Dying → Dead and Resurrecting → Alive
 - **Neighbor Counting**: Alive and Dying treated as originally live; Dead and Resurrecting treated as originally dead
 - **Result**: After generation, board contains only Dead and Alive states
-- **Early Stop**: Extinction stops immediately. Fixed-point still lifes stop when an attempted generation reports zero births and zero deaths; that no-op confirmation is reported as stability at the previous generation. Oscillators/cycles are not classified as stable in this change.
+- **Early Stop**: Extinction stops immediately. Fixed-point still lifes stop when an attempted generation reports zero births and zero deaths; that no-op confirmation is reported as stability at the previous generation. In-memory runs also stop when exact board signatures repeat, reporting `cyclic` plus the cycle period.
 - **Configuration**: CLI options select board size, iteration count, memory budget, and initial board source; `demo` remains deterministic while `random` generates a fresh random board each run
 
 ### Architecture diagram

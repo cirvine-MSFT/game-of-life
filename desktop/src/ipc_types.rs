@@ -175,6 +175,7 @@ pub enum IpcRunStatus {
     MaxIterations,
     Extinct,
     Stable,
+    Cyclic,
 }
 
 impl IpcRunStatus {
@@ -183,6 +184,7 @@ impl IpcRunStatus {
             RunStatus::MaxIterations => IpcRunStatus::MaxIterations,
             RunStatus::Extinct => IpcRunStatus::Extinct,
             RunStatus::Stable => IpcRunStatus::Stable,
+            RunStatus::Cyclic => IpcRunStatus::Cyclic,
         }
     }
 }
@@ -200,6 +202,9 @@ pub struct IpcRunStatistics {
     pub total_deaths: u64,
     pub iterations_run: u64,
     pub status: IpcRunStatus,
+    pub cycle_start_generation: Option<u64>,
+    pub cycle_detected_generation: Option<u64>,
+    pub cycle_period: Option<u64>,
 }
 
 impl From<&RunStatistics> for IpcRunStatistics {
@@ -215,6 +220,9 @@ impl From<&RunStatistics> for IpcRunStatistics {
             total_deaths: s.total_deaths,
             iterations_run: s.iterations_run,
             status: IpcRunStatus::from_core(s.status),
+            cycle_start_generation: s.cycle.map(|cycle| cycle.start_generation),
+            cycle_detected_generation: s.cycle.map(|cycle| cycle.detected_generation),
+            cycle_period: s.cycle.map(|cycle| cycle.period),
         }
     }
 }

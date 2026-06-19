@@ -1,4 +1,4 @@
-use super::{BoardView, CellCoordinate, CellState};
+use super::{BoardSignatureAccumulator, BoardView, CellCoordinate, CellState, GenerationSummary};
 use crate::algorithms::CellRule;
 use crate::stats::AdvanceOutcome;
 
@@ -37,6 +37,13 @@ pub trait BoardEditor: BoardView {
     fn advance_with_rule(&mut self, rule: &dyn CellRule) -> Result<AdvanceOutcome, Self::Error> {
         default_advance_with_rule(self, rule)
     }
+
+    fn advance_with_rule_and_signature(
+        &mut self,
+        rule: &dyn CellRule,
+    ) -> Result<GenerationSummary, Self::Error> {
+        default_advance_with_rule_and_signature(self, rule)
+    }
 }
 
 /// Default two-phase in-place generation update used by the `BoardEditor`
@@ -49,6 +56,21 @@ pub fn default_advance_with_rule<B: BoardEditor + ?Sized>(
     board: &mut B,
     rule: &dyn CellRule,
 ) -> Result<AdvanceOutcome, B::Error> {
+    Ok(default_advance_with_rule_internal(board, rule, false)?.outcome)
+}
+
+pub fn default_advance_with_rule_and_signature<B: BoardEditor + ?Sized>(
+    board: &mut B,
+    rule: &dyn CellRule,
+) -> Result<GenerationSummary, B::Error> {
+    default_advance_with_rule_internal(board, rule, true)
+}
+
+fn default_advance_with_rule_internal<B: BoardEditor + ?Sized>(
+    board: &mut B,
+    rule: &dyn CellRule,
+    capture_signature: bool,
+) -> Result<GenerationSummary, B::Error> {
     let height = board.height();
     let width = board.width();
     let mut neighbor_coordinates: Vec<CellCoordinate> = Vec::with_capacity(8);
@@ -84,6 +106,7 @@ pub fn default_advance_with_rule<B: BoardEditor + ?Sized>(
     let mut births = 0u64;
     let mut deaths = 0u64;
     let mut alive_count = 0u64;
+    let mut signature = capture_signature.then(|| BoardSignatureAccumulator::new(width, height));
     for y in 0..height {
         for x in 0..width {
             let coordinate = CellCoordinate::new(x, y);
@@ -97,10 +120,16 @@ pub fn default_advance_with_rule<B: BoardEditor + ?Sized>(
             if matches!(normalized, CellState::Alive) {
                 alive_count += 1;
             }
+            if let Some(signature) = signature.as_mut() {
+                signature.observe(coordinate, normalized);
+            }
             board.set_cell(coordinate, normalized)?;
         }
     }
-    Ok(AdvanceOutcome::from_counts(births, deaths, alive_count))
+    Ok(GenerationSummary::new(
+        AdvanceOutcome::from_counts(births, deaths, alive_count),
+        signature.map(BoardSignatureAccumulator::finish),
+    ))
 }
 
 fn collect_in_bounds_neighbors(
