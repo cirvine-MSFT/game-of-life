@@ -1,10 +1,10 @@
 # Test maintenance
 
-Tests live outside product code and should make coverage ownership obvious.
+Tests live outside product code and should make coverage ownership obvious. Rust tests use separate Cargo integration-test directories that roughly mirror the product-code modules or behavior they cover.
 
 ## File naming
 
-Rust integration tests use the `_tests.rs` suffix so test files are distinguishable from product files by filename alone. Top-level Rust files under `tests/` and `desktop/tests/` are Cargo integration-test binaries. Grouped root test modules keep a suffixed wrapper and suffixed child files.
+Rust integration tests use the `_tests.rs` suffix so test files are distinguishable from product files by filename alone. Test filenames should identify both the product module or behavior under test and that the file is a test. Top-level Rust files under `tests/` and `desktop/tests/` are Cargo integration-test binaries. Grouped root test modules keep a suffixed wrapper and suffixed child files.
 
 Desktop UI tests keep the TypeScript/Vitest convention and stay near UI source files as `.test.ts` or `.test.tsx`.
 

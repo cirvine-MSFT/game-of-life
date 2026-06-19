@@ -35,7 +35,7 @@ Examples that fail and should be removed: `/// Builds a snapshot wrapping the gi
 
 ## Test Style
 
-All tests live in `tests/` (Cargo integration test style). No inline `#[cfg(test)] mod tests {}` blocks inside `src/` modules — they're idiomatic in Rust but **not used in this repo**.
+Rust tests live outside product code in Cargo integration-test directories. Root crate tests go under `tests/`; desktop Rust tests go under `desktop/tests/`. Do not add inline `#[cfg(test)] mod tests {}` blocks inside `src/` or `desktop/src/` modules — they're idiomatic in Rust but **not used in this repo**.
 
 Two consequences worth being explicit about:
 
@@ -44,7 +44,7 @@ Two consequences worth being explicit about:
    - Test the public function that calls it (the helper is implementation detail), OR
    - Promote the helper to public if it really is a meaningful library surface.
 
-File naming — Rust integration tests use the `_tests.rs` suffix so test files are distinguishable from product files by filename alone. Top-level `tests/*_tests.rs` files are Cargo test binaries. Grouped child modules under `tests/<module>/` also use `_tests.rs` and are included by a suffixed wrapper.
+File layout and naming — Rust integration tests should roughly mirror the product-code module structure they cover, but from the separate test directory. Test filenames must identify both the product module or behavior under test and that the file is a test: use the `_tests.rs` suffix. Top-level `tests/*_tests.rs` and `desktop/tests/*_tests.rs` files are Cargo test binaries. Grouped child modules under `tests/<module>/` also use `_tests.rs` and are included by a suffixed wrapper.
 
 ```
 src/                            tests/
