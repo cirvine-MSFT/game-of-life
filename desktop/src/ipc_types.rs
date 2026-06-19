@@ -256,7 +256,7 @@ pub struct CellEdit {
 #[cfg(test)]
 mod inline_smoke {
     // Only minimal #[cfg(test)] sanity checks — comprehensive coverage lives
-    // in `tests/ipc_types.rs` per the project's integration-test convention.
+    // in `tests/ipc_types_tests.rs` per the project's integration-test convention.
     use super::*;
 
     #[test]

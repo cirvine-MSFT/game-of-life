@@ -165,16 +165,23 @@ src/
   persistence/ - Run record and board snapshot file IO (zero deps)
   stats/       - Per-generation AdvanceOutcome and RunStatistics
 tests/
+  algorithms_tests.rs       - Algorithm initializer and updater behavior
   board_tests.rs            - Board API and Game of Life behavior
   config_tests.rs           - Configuration and parser behavior
   cli_tests.rs              - End-to-end binary behavior for the core run
-  persistence_cli_tests.rs  - End-to-end save/load/replay/extract/continue
+  pattern_analysis_tests.rs - Pattern analyzer behavior
+  persistence_tests.rs      - Wrapper for persistence integration tests
+  persistence/*_tests.rs    - Persistence file format, parser, and CLI flows
+  stats_tests.rs            - Wrapper for statistics integration tests
+  stats/*_tests.rs          - Run statistics behavior
+  streaming_tests.rs        - Wrapper for streaming-board integration tests
+  streaming/*_tests.rs      - File-backed streaming-board behavior
 Cargo.toml     - Project manifest with library and binary targets
 ```
 
 **Libraries Used**: None (no external dependencies for core logic)
 
-**Testing**: Cargo integration tests under `tests/`
+**Testing**: Cargo integration tests under `tests/` with `_tests.rs` filenames
 - Tests cover still-life, oscillators, edge cases, negative parser cases, CLI behavior, and state transitions
 - Grid-based test construction keeps board expectations readable
 - `edge_case_` labels identify valid boundary behavior

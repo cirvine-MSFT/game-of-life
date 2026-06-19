@@ -8,7 +8,7 @@
 #
 # This is intentionally a thin "does the real binary do the obvious thing"
 # check. Behavioral coverage of save / load / replay / extract / continue
-# lives in tests/persistence_cli_tests.rs and the per-module unit tests, all
+# lives in tests/persistence/cli_tests.rs and the per-module unit tests, all
 # driven through `cargo test`.
 #
 # Usage:
