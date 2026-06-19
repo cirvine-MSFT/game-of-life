@@ -18,8 +18,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use game_of_life::{
-    BoardEditor, BoardView, CellCoordinate, CellState, InMemoryBoard, InPlaceTransitionalUpdater,
-    StreamingBoard, StreamingBoardCreationError, StreamingBoardParams,
+    derive_chunk_dimensions, BoardEditor, BoardView, CellCoordinate, CellState, InMemoryBoard,
+    InPlaceTransitionalUpdater, StreamingBoard, StreamingBoardCreationError, StreamingBoardParams,
 };
 
 fn make_streaming(
@@ -159,6 +159,40 @@ fn negative_streaming_creation_rejects_below_floor_budget() {
         err,
         StreamingBoardCreationError::InsufficientMemoryBudget { .. }
     ));
+}
+
+#[test]
+fn streaming_chunk_dimensions_pick_row_band_when_budget_allows() {
+    let (rows, cols) =
+        derive_chunk_dimensions(4, 100, 1024, None, None).expect("derive should succeed");
+    assert_eq!(cols, 4, "should use full width as row-band");
+    assert!(rows >= 1);
+}
+
+#[test]
+fn streaming_chunk_dimensions_fall_back_to_2d_when_budget_too_small_for_row_band() {
+    let (rows, cols) =
+        derive_chunk_dimensions(1000, 1000, 16, None, None).expect("minimum budget should succeed");
+    assert_eq!(rows, 1);
+    assert!(cols < 1000);
+    assert!(cols >= 1);
+}
+
+#[test]
+fn negative_streaming_chunk_dimensions_reject_budget_below_min() {
+    let err =
+        derive_chunk_dimensions(10, 10, 1, None, None).expect_err("below-min budget should reject");
+    assert!(matches!(
+        err,
+        StreamingBoardCreationError::InsufficientMemoryBudget { .. }
+    ));
+}
+
+#[test]
+fn streaming_chunk_dimensions_honor_overrides() {
+    let (rows, cols) =
+        derive_chunk_dimensions(100, 100, usize::MAX, Some(5), Some(7)).expect("derive");
+    assert_eq!((rows, cols), (5, 7));
 }
 
 #[test]

@@ -31,6 +31,23 @@ fn ipc_cell_state_collapses_transitional_variants_to_alive_or_dead() {
 }
 
 #[test]
+fn ipc_cell_state_round_trips_normalized_core_state() {
+    for state in [
+        CellState::Dead,
+        CellState::Alive,
+        CellState::Dying,
+        CellState::Resurrecting,
+    ] {
+        let ipc = IpcCellState::from_core(state);
+        let back = ipc.to_core();
+        match state {
+            CellState::Alive | CellState::Resurrecting => assert_eq!(back, CellState::Alive),
+            CellState::Dead | CellState::Dying => assert_eq!(back, CellState::Dead),
+        }
+    }
+}
+
+#[test]
 fn board_payload_round_trips_through_base64() {
     let cells: Vec<u8> = (0..2500)
         .map(|i| if i % 3 == 0 { 1u8 } else { 0u8 })
