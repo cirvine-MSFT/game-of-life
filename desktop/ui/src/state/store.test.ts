@@ -41,6 +41,7 @@ vi.mock("../ipc", async () => {
     extendMaxIterations: vi.fn(async () => undefined),
     editBoard: vi.fn(async () => undefined),
     loadBoardSnapshot: vi.fn(async () => "/tmp/loaded.gol"),
+    loadRunBoard: vi.fn(async () => "/tmp/run.gol"),
     saveBoardSnapshot: vi.fn(async () => "/tmp/test.gol"),
     defaultSaveDir: vi.fn(async () => "/tmp"),
     onBoardTick: vi.fn(async () => () => undefined),
@@ -327,9 +328,9 @@ describe("loadBoardSnapshot()", () => {
     await useStore.getState().loadBoardSnapshot();
 
     expect(dialog.open).toHaveBeenCalledWith({
-      title: "Load board snapshot",
+      title: "Load board snapshot or run",
       multiple: false,
-      filters: [{ name: "Game of Life board", extensions: ["gol"] }],
+      filters: [{ name: "Game of Life file", extensions: ["gol"] }],
     });
     expect(ipc.loadBoardSnapshot).toHaveBeenCalledWith("/tmp/loaded.gol");
     expect(ipc.getSession).toHaveBeenCalled();
@@ -374,6 +375,67 @@ describe("loadBoardSnapshot()", () => {
       title: "Unable to load board",
       kind: "error",
     });
+    expect(ipc.getSession).not.toHaveBeenCalled();
+    expect(ipc.getBoard).not.toHaveBeenCalled();
+  });
+});
+
+describe("loadRunBoard()", () => {
+  it("loads the selected board from a run record", async () => {
+    dialog.open.mockResolvedValueOnce("/tmp/run.gol");
+    vi.mocked(ipc.getSession).mockResolvedValue(populatedSession);
+    useStore.setState({
+      session: populatedSession,
+      history: [1, 2],
+      latestTick: { iteration: 2, alive: 3, dead: 6, births: 1, deaths: 0 },
+      finalStats: {
+        initialAliveCount: 1,
+        finalAliveCount: 3,
+        peakAliveCount: 3,
+        peakAliveGeneration: 2,
+        minAliveCount: 1,
+        minAliveGeneration: 0,
+        totalBirths: 2,
+        totalDeaths: 0,
+        iterationsRun: 2,
+        status: "maxIterations",
+      },
+      jumpProgress: { current: 2, target: 10 },
+    });
+
+    await useStore.getState().loadRunBoard("final");
+
+    expect(dialog.open).toHaveBeenCalledWith({
+      title: "Load final board from run",
+      multiple: false,
+      filters: [{ name: "Game of Life run", extensions: ["gol"] }],
+    });
+    expect(ipc.loadRunBoard).toHaveBeenCalledWith("/tmp/run.gol", "final");
+    expect(ipc.getSession).toHaveBeenCalled();
+    expect(ipc.getBoard).toHaveBeenCalled();
+    expect(ipc.getAliveHistory).toHaveBeenCalled();
+    expect(useStore.getState().latestTick).toBeNull();
+    expect(useStore.getState().finalStats).toBeNull();
+    expect(useStore.getState().jumpProgress).toBeNull();
+  });
+
+  it("shows run load errors without refreshing state", async () => {
+    dialog.open.mockResolvedValueOnce("/tmp/bad-run.gol");
+    vi.mocked(ipc.loadRunBoard).mockRejectedValueOnce({
+      kind: "loadRunRecord",
+      message: "Selected file is not a valid Game of Life run record",
+    });
+    useStore.setState({ session: populatedSession });
+
+    await useStore.getState().loadRunBoard("initial");
+
+    expect(dialog.message).toHaveBeenCalledWith(
+      "Selected file is not a valid Game of Life run record",
+      {
+        title: "Unable to load run",
+        kind: "error",
+      },
+    );
     expect(ipc.getSession).not.toHaveBeenCalled();
     expect(ipc.getBoard).not.toHaveBeenCalled();
   });

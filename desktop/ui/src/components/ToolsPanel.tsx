@@ -156,25 +156,33 @@ const FilesPanel = () => {
   const styles = useStyles();
   const session = useStore((s) => s.session);
   const loadBoardSnapshot = useStore((s) => s.loadBoardSnapshot);
+  const loadRunBoard = useStore((s) => s.loadRunBoard);
   const saveBoardSnapshot = useStore((s) => s.saveBoardSnapshot);
 
   return (
     <section className={styles.placeholder} aria-label="Files panel">
       <Subtitle2>Files</Subtitle2>
       <Body1>
-        Load and save editable .gol board snapshots. Loading a snapshot restores the board
-        layout into Setup mode at iteration 0 so it can be run deterministically.
+        Load and save editable .gol board snapshots, or import the initial/final board from
+        a saved run. Loaded files restore a board into Setup mode at iteration 0 so it can be
+        replayed or adjusted.
       </Body1>
       <div className={styles.actionRow}>
         <Button icon={<FolderOpenRegular />} onClick={() => void loadBoardSnapshot()}>
-          Load board
+          Load board snapshot
+        </Button>
+        <Button icon={<FolderOpenRegular />} onClick={() => void loadRunBoard("initial")}>
+          Load run initial
+        </Button>
+        <Button icon={<FolderOpenRegular />} onClick={() => void loadRunBoard("final")}>
+          Load run final
         </Button>
         <Button
           icon={<SaveRegular />}
           disabled={!session || session.width === 0}
           onClick={() => void saveBoardSnapshot()}
         >
-          Save board
+          Save board snapshot
         </Button>
       </div>
       <Divider />

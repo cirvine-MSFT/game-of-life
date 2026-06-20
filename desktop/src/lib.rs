@@ -21,6 +21,7 @@ pub fn run() {
             commands::session_commands::default_save_dir,
             commands::session_commands::save_board_snapshot,
             commands::session_commands::load_board_snapshot,
+            commands::session_commands::load_run_board,
             commands::setup_commands::create_run,
             commands::setup_commands::set_cell,
             commands::setup_commands::paint_cells,

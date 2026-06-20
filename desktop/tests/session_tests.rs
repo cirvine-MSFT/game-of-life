@@ -5,11 +5,15 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::SystemTime;
 
-use game_of_life::persistence::{write_board_snapshot, BoardSnapshot};
-use game_of_life::{BoardEditor, CellCoordinate, CellState, InMemoryBoard};
+use game_of_life::persistence::{
+    board_grid_hash, write_board_snapshot, write_run_record, BoardSnapshot, RunId, RunRecord,
+    RunRecordConfig, RunRecordResult,
+};
+use game_of_life::{BoardEditor, BoardSize, CellCoordinate, CellState, InMemoryBoard};
 use game_of_life_desktop_lib::ipc_types::{
-    CellEdit, InitialSource, IpcRunStatus, Mode, PatternName,
+    CellEdit, InitialSource, IpcRunStatus, Mode, PatternName, RunBoardSelection,
 };
 use game_of_life_desktop_lib::session::{RunSession, SessionError};
 
@@ -81,6 +85,55 @@ fn write_snapshot_file(label: &str, board: InMemoryBoard) -> std::path::PathBuf 
     let path = unique_snapshot_path(label);
     let _ = std::fs::remove_file(&path);
     write_board_snapshot(&path, &BoardSnapshot::for_board(board)).expect("write snapshot");
+    path
+}
+
+fn write_run_record_file(
+    label: &str,
+    initial_board: InMemoryBoard,
+    final_board: InMemoryBoard,
+    max_iterations: usize,
+) -> std::path::PathBuf {
+    let path = unique_snapshot_path(label);
+    let _ = std::fs::remove_file(&path);
+    let initial_alive = board_bytes(&initial_board).iter().map(|&c| c as u64).sum();
+    let final_alive = board_bytes(&final_board).iter().map(|&c| c as u64).sum();
+    let record = RunRecord {
+        run_id: RunId::generate(),
+        schema_version: 1,
+        created_at: SystemTime::UNIX_EPOCH,
+        tool_version: "test".to_string(),
+        config: RunRecordConfig {
+            board_size: BoardSize::new(initial_board.width(), initial_board.height()).unwrap(),
+            max_iterations,
+            max_board_memory_bytes: 64 * 1024 * 1024,
+            initial_board_source: "test".to_string(),
+            random_seed: 0,
+            updater: "in_place_transitional".to_string(),
+            continued_from: None,
+        },
+        result: RunRecordResult {
+            status: "max_iterations".to_string(),
+            iterations_run: max_iterations as u64,
+            wall_time_ms: 0,
+            initial_alive_count: initial_alive,
+            final_alive_count: final_alive,
+            peak_alive_count: initial_alive.max(final_alive),
+            peak_alive_generation: 0,
+            min_alive_count: initial_alive.min(final_alive),
+            min_alive_generation: 0,
+            total_births: 0,
+            total_deaths: 0,
+            cycle_start_generation: None,
+            cycle_detected_generation: None,
+            cycle_period: None,
+            initial_board_hash: board_grid_hash(&initial_board),
+            final_board_hash: board_grid_hash(&final_board),
+        },
+        initial_board,
+        final_board,
+    };
+    write_run_record(&path, &record).expect("write run record");
     path
 }
 
@@ -718,6 +771,52 @@ fn load_board_snapshot_round_trips_larger_generated_board_bytes() {
     assert_eq!(info.height, 13);
     assert_eq!(info.max_iterations, 100);
     assert_eq!(info.save_path, Some(path.display().to_string()));
+    assert!(!info.dirty);
+    assert_eq!(s.board_payload().decoded_cells().unwrap(), expected);
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn load_board_snapshot_imports_run_record_initial_board() {
+    let initial = board_from_grid(&["....", ".##.", ".##.", "...."]);
+    let final_board = board_from_grid(&["....", "....", ".##.", ".##."]);
+    let expected = board_bytes(&initial);
+    let path = write_run_record_file("run-as-board", initial, final_board, 42);
+    let s = fresh_session(1, 1, 10);
+
+    s.load_board_snapshot(&path).unwrap();
+
+    let info = s.info();
+    assert_eq!(info.mode, Mode::Setup);
+    assert_eq!(info.iteration, 0);
+    assert_eq!(info.width, 4);
+    assert_eq!(info.height, 4);
+    assert_eq!(info.max_iterations, 42);
+    assert!(info.save_path.is_none());
+    assert!(!info.dirty);
+    assert_eq!(s.board_payload().decoded_cells().unwrap(), expected);
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn load_run_board_imports_selected_final_board() {
+    let initial = board_from_grid(&["....", ".##.", ".##.", "...."]);
+    let final_board = board_from_grid(&["....", "....", ".##.", ".##."]);
+    let expected = board_bytes(&final_board);
+    let path = write_run_record_file("run-final", initial, final_board, 42);
+    let s = fresh_session(1, 1, 10);
+
+    s.load_run_board(&path, RunBoardSelection::Final).unwrap();
+
+    let info = s.info();
+    assert_eq!(info.mode, Mode::Setup);
+    assert_eq!(info.iteration, 0);
+    assert_eq!(info.width, 4);
+    assert_eq!(info.height, 4);
+    assert_eq!(info.max_iterations, 42);
+    assert!(info.save_path.is_none());
     assert!(!info.dirty);
     assert_eq!(s.board_payload().decoded_cells().unwrap(), expected);
 

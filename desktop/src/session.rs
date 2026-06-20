@@ -19,8 +19,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use parking_lot::{Mutex, MutexGuard};
 
 use game_of_life::persistence::{
-    read_board_snapshot_default, write_board_snapshot, BoardSnapshot, BoardSnapshotReadError,
-    BoardSnapshotWriteError,
+    read_board_snapshot_default, read_run_record_with_warnings, write_board_snapshot,
+    BoardSnapshot, BoardSnapshotReadError, BoardSnapshotWriteError, ContentHashMode, FileKind,
+    RunRecordReadError,
 };
 use game_of_life::stats::run_statistics::RunStatus;
 use game_of_life::{
@@ -33,7 +34,7 @@ use game_of_life::{
 
 use crate::ipc_types::{
     AdvanceTick, BoardPayload, CellEdit, InitialSource, IpcCellState, IpcRunStatistics,
-    IpcRunStatus, Mode, PatternName, SessionInfo,
+    IpcRunStatus, Mode, PatternName, RunBoardSelection, SessionInfo,
 };
 
 /// Upper bound on the alive-count history before in-place decimation.
@@ -781,9 +782,50 @@ impl RunSession {
     /// Loads a standalone `GOL-BOARD-SNAPSHOT v1` file into Setup mode.
     /// Invalid files leave the current session untouched.
     pub fn load_board_snapshot(&self, path: &Path) -> Result<(), SessionError> {
-        let snapshot = read_board_snapshot_default(path, DEFAULT_MAX_BOARD_MEMORY_BYTES)
-            .map_err(|e| SessionError::LoadBoardSnapshot(load_snapshot_error_message(e)))?;
-        let board = snapshot.board;
+        let snapshot = match read_board_snapshot_default(path, DEFAULT_MAX_BOARD_MEMORY_BYTES) {
+            Ok(snapshot) => snapshot,
+            Err(BoardSnapshotReadError::UnexpectedFileKind {
+                actual: FileKind::RunRecord,
+                ..
+            }) => {
+                return self.load_run_board(path, RunBoardSelection::Initial);
+            }
+            Err(e) => {
+                return Err(SessionError::LoadBoardSnapshot(
+                    load_snapshot_error_message(e),
+                ));
+            }
+        };
+        self.load_board_into_setup(snapshot.board, Some(path.to_path_buf()), None)
+    }
+
+    pub fn load_run_board(
+        &self,
+        path: &Path,
+        selection: RunBoardSelection,
+    ) -> Result<(), SessionError> {
+        let loaded = read_run_record_with_warnings(
+            path,
+            DEFAULT_MAX_BOARD_MEMORY_BYTES,
+            game_of_life::persistence::DEFAULT_MAX_INPUT_FILE_BYTES,
+            ContentHashMode::Enforce,
+        )
+        .map_err(|e| SessionError::LoadRunRecord(load_run_error_message(e)))?;
+        let max_iterations =
+            u64::try_from(loaded.record.config.max_iterations).unwrap_or(DEFAULT_MAX_ITERATIONS);
+        let board = match selection {
+            RunBoardSelection::Initial => loaded.record.initial_board,
+            RunBoardSelection::Final => loaded.record.final_board,
+        };
+        self.load_board_into_setup(board, None, Some(max_iterations))
+    }
+
+    fn load_board_into_setup(
+        &self,
+        board: InMemoryBoard,
+        save_path: Option<PathBuf>,
+        max_iterations: Option<u64>,
+    ) -> Result<(), SessionError> {
         let saved_snapshot = collect_cells(&board);
         let width = u32::try_from(board.width()).map_err(|_| {
             SessionError::LoadBoardSnapshot(format!(
@@ -801,11 +843,13 @@ impl RunSession {
         self.stop_worker_and_wait();
 
         let mut data = self.lock();
-        let max_iterations = if data.max_iterations == 0 {
-            DEFAULT_MAX_ITERATIONS
-        } else {
-            data.max_iterations
-        };
+        let max_iterations = max_iterations.unwrap_or_else(|| {
+            if data.max_iterations == 0 {
+                DEFAULT_MAX_ITERATIONS
+            } else {
+                data.max_iterations
+            }
+        });
         data.mode = Mode::Setup;
         data.width = width;
         data.height = height;
@@ -817,7 +861,7 @@ impl RunSession {
         data.stats = None;
         data.pattern_analyzer = None;
         data.final_stats = None;
-        data.save_path = Some(path.to_path_buf());
+        data.save_path = save_path;
         data.saved_snapshot = Some(saved_snapshot);
         data.dirty = false;
         data.revision = data.revision.wrapping_add(1);
@@ -853,6 +897,44 @@ fn load_snapshot_error_message(error: BoardSnapshotReadError) -> String {
         | BoardSnapshotReadError::InvalidTimestamp(_)
         | BoardSnapshotReadError::Parse(_) => {
             "Selected file is not a valid Game of Life board snapshot. Expected a GOL-BOARD-SNAPSHOT v1 .gol file with a #/. board grid."
+                .to_string()
+        }
+    }
+}
+
+fn load_run_error_message(error: RunRecordReadError) -> String {
+    match error {
+        RunRecordReadError::Io(_) => {
+            "Could not read the selected run record. Confirm the file still exists and is readable."
+                .to_string()
+        }
+        RunRecordReadError::UnexpectedFileKind { actual, .. } => {
+            format!("Selected file is a {actual}, but expected a run record.")
+        }
+        RunRecordReadError::BoardBlockTooLarge { source, .. } => source.to_string(),
+        RunRecordReadError::FileTooLarge {
+            actual_bytes,
+            limit_bytes,
+            ..
+        } => format!(
+            "Selected file is {actual_bytes} bytes, which exceeds the {limit_bytes}-byte input file limit."
+        ),
+        RunRecordReadError::Corrupted { .. } | RunRecordReadError::MissingContentHash { .. } => {
+            "Selected run record failed integrity validation. Recreate the run record, or extract a board snapshot from it with the CLI if you intentionally edited it."
+                .to_string()
+        }
+        RunRecordReadError::MalformedSizeHeader { .. } => {
+            "Selected run record has a malformed board size header. Expected WIDTHxHEIGHT, for example 10x10."
+                .to_string()
+        }
+        RunRecordReadError::Magic(_)
+        | RunRecordReadError::InvalidTimestamp(_)
+        | RunRecordReadError::Parse(_)
+        | RunRecordReadError::UnrecognizedStatus { .. }
+        | RunRecordReadError::MalformedRunId { .. }
+        | RunRecordReadError::MalformedField { .. }
+        | RunRecordReadError::MissingField { .. } => {
+            "Selected file is not a valid Game of Life run record. Expected a GOL-RUN-RECORD v1 .gol file."
                 .to_string()
         }
     }
@@ -940,6 +1022,8 @@ pub enum SessionError {
     SaveBoardSnapshot(String),
     #[error("load board snapshot failed: {0}")]
     LoadBoardSnapshot(String),
+    #[error("load run record failed: {0}")]
+    LoadRunRecord(String),
     #[error(transparent)]
     Allocation(#[from] InMemoryBoardCreationError),
     #[error(transparent)]
@@ -964,6 +1048,7 @@ impl serde::Serialize for SessionError {
             SessionError::StreamingNotImplemented { .. } => "streamingNotImplemented",
             SessionError::SaveBoardSnapshot(_) => "saveBoardSnapshot",
             SessionError::LoadBoardSnapshot(_) => "loadBoardSnapshot",
+            SessionError::LoadRunRecord(_) => "loadRunRecord",
             SessionError::Allocation(_) => "allocation",
             SessionError::RandomInit(_) => "randomInit",
         };

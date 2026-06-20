@@ -10,6 +10,7 @@ import type {
   InitialSource,
   IpcRunStatistics,
   PatternName,
+  RunBoardSelection,
   SessionInfo,
 } from "./types";
 
@@ -34,6 +35,11 @@ export const saveBoardSnapshot = (
 
 export const loadBoardSnapshot = (path: string): Promise<string> =>
   invoke("load_board_snapshot", { path });
+
+export const loadRunBoard = (
+  path: string,
+  selection: RunBoardSelection,
+): Promise<string> => invoke("load_run_board", { path, selection });
 
 // --- setup_commands ---
 

@@ -18,6 +18,8 @@ export type InitialSource =
       value: { seed: number; aliveCellsPerThousand: number };
     };
 
+export type RunBoardSelection = "initial" | "final";
+
 export interface BoardPayload {
   width: number;
   height: number;
@@ -97,6 +99,7 @@ export interface SessionErrorPayload {
     | "streamingNotImplemented"
     | "saveBoardSnapshot"
     | "loadBoardSnapshot"
+    | "loadRunRecord"
     | "allocation"
     | "randomInit";
   message: string;

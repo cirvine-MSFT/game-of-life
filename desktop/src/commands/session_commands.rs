@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use tauri::State;
 
-use crate::ipc_types::{BoardPayload, IpcRunStatistics, SessionInfo};
+use crate::ipc_types::{BoardPayload, IpcRunStatistics, RunBoardSelection, SessionInfo};
 use crate::session::{RunSession, SessionError};
 
 #[tauri::command]
@@ -95,5 +95,16 @@ pub fn load_board_snapshot(
 ) -> Result<String, SessionError> {
     let p = PathBuf::from(&path);
     session.load_board_snapshot(&p)?;
+    Ok(p.display().to_string())
+}
+
+#[tauri::command]
+pub fn load_run_board(
+    session: State<'_, Arc<RunSession>>,
+    path: String,
+    selection: RunBoardSelection,
+) -> Result<String, SessionError> {
+    let p = PathBuf::from(&path);
+    session.load_run_board(&p, selection)?;
     Ok(p.display().to_string())
 }

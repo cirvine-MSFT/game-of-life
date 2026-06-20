@@ -28,6 +28,7 @@ import {
   getSession,
   jumpTo,
   loadBoardSnapshot,
+  loadRunBoard,
   onBoardTick,
   onJumpProgress,
   onRunCompleted,
@@ -46,6 +47,7 @@ import {
   type IpcRunStatistics,
   type JumpProgress,
   type PatternName,
+  type RunBoardSelection,
   type SessionInfo,
 } from "../ipc";
 
@@ -101,6 +103,7 @@ interface AppState {
 
   // Persistence
   loadBoardSnapshot: () => Promise<void>;
+  loadRunBoard: (selection: RunBoardSelection) => Promise<void>;
   saveBoardSnapshot: () => Promise<void>;
 
   // Tear-down
@@ -333,7 +336,7 @@ export const useStore = create<AppState>((set, get) => ({
     const session = get().session;
     if (session?.dirty) {
       const discard = await ask(
-        "The current board has unsaved changes. Discard them and load another board?",
+        "The current board has unsaved changes. Discard them and load another file?",
         { title: "Discard unsaved changes?", kind: "warning" },
       );
       if (!discard) {
@@ -342,9 +345,9 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     const chosen = await open({
-      title: "Load board snapshot",
+      title: "Load board snapshot or run",
       multiple: false,
-      filters: [{ name: "Game of Life board", extensions: ["gol"] }],
+      filters: [{ name: "Game of Life file", extensions: ["gol"] }],
     });
     if (!chosen) {
       return;
@@ -359,6 +362,48 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (error) {
       await message(messageFromUnknown(error), {
         title: "Unable to load board",
+        kind: "error",
+      });
+      return;
+    }
+
+    await get().refreshSession();
+    await get().refreshBoard();
+    await get().refreshHistory();
+    set({ latestTick: null, finalStats: null, jumpProgress: null });
+  },
+
+  loadRunBoard: async (selection) => {
+    const { open, ask, message } = await import("@tauri-apps/plugin-dialog");
+    const session = get().session;
+    if (session?.dirty) {
+      const discard = await ask(
+        "The current board has unsaved changes. Discard them and load a run?",
+        { title: "Discard unsaved changes?", kind: "warning" },
+      );
+      if (!discard) {
+        return;
+      }
+    }
+
+    const chosen = await open({
+      title: `Load ${selection} board from run`,
+      multiple: false,
+      filters: [{ name: "Game of Life run", extensions: ["gol"] }],
+    });
+    if (!chosen) {
+      return;
+    }
+    const path = Array.isArray(chosen) ? chosen[0] : chosen;
+    if (!path) {
+      return;
+    }
+
+    try {
+      await loadRunBoard(path, selection);
+    } catch (error) {
+      await message(messageFromUnknown(error), {
+        title: "Unable to load run",
         kind: "error",
       });
       return;
