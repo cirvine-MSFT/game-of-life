@@ -140,6 +140,12 @@ export const StatsPanel = () => {
               <Caption1>Total births</Caption1>
               <Body1>{finalStats.totalBirths}</Body1>
             </div>
+            {finalStats.cyclePeriod != null && (
+              <div className={styles.metric}>
+                <Caption1>Cycle period</Caption1>
+                <Body1>{finalStats.cyclePeriod}</Body1>
+              </div>
+            )}
           </div>
         </>
       )}

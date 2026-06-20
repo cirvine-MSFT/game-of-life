@@ -14,15 +14,23 @@ pub struct RunStatistics {
     pub total_deaths: u64,
     pub iterations_run: u64,
     pub status: RunStatus,
+    pub cycle: Option<CycleStatistics>,
 }
 
-/// Coarse-grained outcome label written to the run record. `Cyclic` remains a
-/// reserved reader value; period-greater-than-1 detection is a future feature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CycleStatistics {
+    pub start_generation: u64,
+    pub detected_generation: u64,
+    pub period: u64,
+}
+
+/// Coarse-grained outcome label written to the run record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStatus {
     MaxIterations,
     Extinct,
     Stable,
+    Cyclic,
 }
 
 impl RunStatus {
@@ -31,6 +39,7 @@ impl RunStatus {
             RunStatus::MaxIterations => "max_iterations",
             RunStatus::Extinct => "extinct",
             RunStatus::Stable => "stable",
+            RunStatus::Cyclic => "cyclic",
         }
     }
 }
@@ -77,6 +86,20 @@ impl RunStatisticsCollector {
         }
     }
 
+    pub fn from_statistics(statistics: &RunStatistics) -> Self {
+        Self {
+            initial_alive_count: statistics.initial_alive_count,
+            final_alive_count: statistics.final_alive_count,
+            peak_alive_count: statistics.peak_alive_count,
+            peak_alive_generation: statistics.peak_alive_generation,
+            min_alive_count: statistics.min_alive_count,
+            min_alive_generation: statistics.min_alive_generation,
+            total_births: statistics.total_births,
+            total_deaths: statistics.total_deaths,
+            iterations_run: statistics.iterations_run,
+        }
+    }
+
     pub fn record(&mut self, outcome: AdvanceOutcome) {
         self.iterations_run += 1;
         self.total_births += outcome.births;
@@ -101,6 +124,14 @@ impl RunStatisticsCollector {
     }
 
     pub fn finalize(self, status: RunStatus) -> RunStatistics {
+        self.finalize_with_cycle(status, None)
+    }
+
+    pub fn finalize_with_cycle(
+        self,
+        status: RunStatus,
+        cycle: Option<CycleStatistics>,
+    ) -> RunStatistics {
         RunStatistics {
             initial_alive_count: self.initial_alive_count,
             final_alive_count: self.final_alive_count,
@@ -112,6 +143,7 @@ impl RunStatisticsCollector {
             total_deaths: self.total_deaths,
             iterations_run: self.iterations_run,
             status,
+            cycle,
         }
     }
 }

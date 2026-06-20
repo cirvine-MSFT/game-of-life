@@ -17,6 +17,37 @@ fn fresh_session(width: u32, height: u32, max_iter: u64) -> Arc<RunSession> {
     s
 }
 
+fn paint_glider(s: &RunSession) {
+    s.paint_cells(&[
+        CellEdit {
+            x: 2,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 3,
+            y: 2,
+            alive: true,
+        },
+        CellEdit {
+            x: 1,
+            y: 3,
+            alive: true,
+        },
+        CellEdit {
+            x: 2,
+            y: 3,
+            alive: true,
+        },
+        CellEdit {
+            x: 3,
+            y: 3,
+            alive: true,
+        },
+    ])
+    .unwrap();
+}
+
 #[test]
 fn new_session_starts_in_setup_with_no_board() {
     let s = RunSession::new();
@@ -240,26 +271,34 @@ fn advance_one_detects_stability_and_finalises_stats() {
 }
 
 #[test]
+fn advance_one_detects_cycle_and_finalizes_stats() {
+    let s = Arc::new(RunSession::new());
+    s.create_run(5, 5, InitialSource::Pattern(PatternName::Blinker), 10, None)
+        .unwrap();
+    s.start_run().unwrap();
+
+    let first_tick = s.advance_one().unwrap();
+    assert_eq!(first_tick.iteration, 1);
+    assert!(!s.info().completed);
+
+    let second_tick = s.advance_one().unwrap();
+    assert_eq!(second_tick.iteration, 2);
+
+    let info = s.info();
+    assert!(info.completed);
+    assert_eq!(info.status, Some(IpcRunStatus::Cyclic));
+    let stats = s.final_stats().expect("cyclic run should finalise stats");
+    assert_eq!(stats.iterations_run, 2);
+    assert_eq!(stats.status, IpcRunStatus::Cyclic);
+    assert_eq!(stats.cycle_start_generation, Some(0));
+    assert_eq!(stats.cycle_detected_generation, Some(2));
+    assert_eq!(stats.cycle_period, Some(2));
+}
+
+#[test]
 fn advance_one_detects_max_iterations() {
-    let s = fresh_session(3, 3, 2);
-    s.paint_cells(&[
-        CellEdit {
-            x: 0,
-            y: 1,
-            alive: true,
-        },
-        CellEdit {
-            x: 1,
-            y: 1,
-            alive: true,
-        },
-        CellEdit {
-            x: 2,
-            y: 1,
-            alive: true,
-        },
-    ])
-    .unwrap();
+    let s = fresh_session(10, 10, 2);
+    paint_glider(&s);
     s.start_run().unwrap();
     s.advance_one().unwrap();
     s.advance_one().unwrap();
@@ -332,25 +371,8 @@ fn edit_board_returns_to_setup_and_drops_run_state() {
 
 #[test]
 fn extend_max_iterations_lifts_the_cap_and_clears_max_iter_status() {
-    let s = fresh_session(3, 3, 1);
-    s.paint_cells(&[
-        CellEdit {
-            x: 0,
-            y: 1,
-            alive: true,
-        },
-        CellEdit {
-            x: 1,
-            y: 1,
-            alive: true,
-        },
-        CellEdit {
-            x: 2,
-            y: 1,
-            alive: true,
-        },
-    ])
-    .unwrap();
+    let s = fresh_session(10, 10, 1);
+    paint_glider(&s);
     s.start_run().unwrap();
     s.advance_one().unwrap();
     assert!(s.info().completed);
@@ -367,25 +389,8 @@ fn extend_max_iterations_rehydrates_stats_so_next_cap_hit_finalises() {
     // `final_stats` without restoring `data.stats`. The next cap-hit
     // would then silently fail to finalise, leaving `info.completed` =
     // false forever and spinning the play worker.
-    let s = fresh_session(3, 3, 1);
-    s.paint_cells(&[
-        CellEdit {
-            x: 0,
-            y: 1,
-            alive: true,
-        },
-        CellEdit {
-            x: 1,
-            y: 1,
-            alive: true,
-        },
-        CellEdit {
-            x: 2,
-            y: 1,
-            alive: true,
-        },
-    ])
-    .unwrap();
+    let s = fresh_session(10, 10, 1);
+    paint_glider(&s);
     s.start_run().unwrap();
     s.advance_one().unwrap();
     assert!(s.info().completed);
@@ -400,6 +405,32 @@ fn extend_max_iterations_rehydrates_stats_so_next_cap_hit_finalises() {
         info
     );
     assert_eq!(info.status, Some(IpcRunStatus::MaxIterations));
+    let stats = s.final_stats().expect("extended run should finalise stats");
+    assert_eq!(stats.iterations_run, 3);
+}
+
+#[test]
+fn extend_max_iterations_preserves_cycle_generation_accounting() {
+    let s = Arc::new(RunSession::new());
+    s.create_run(5, 5, InitialSource::Pattern(PatternName::Blinker), 1, None)
+        .unwrap();
+    s.start_run().unwrap();
+    s.advance_one().unwrap();
+    assert_eq!(s.info().status, Some(IpcRunStatus::MaxIterations));
+
+    s.extend_max_iterations(3).unwrap();
+    s.advance_one().unwrap();
+
+    let info = s.info();
+    assert!(info.completed);
+    assert_eq!(info.status, Some(IpcRunStatus::Cyclic));
+    let stats = s
+        .final_stats()
+        .expect("extended cycle should finalise stats");
+    assert_eq!(stats.iterations_run, 2);
+    assert_eq!(stats.cycle_start_generation, Some(0));
+    assert_eq!(stats.cycle_detected_generation, Some(2));
+    assert_eq!(stats.cycle_period, Some(2));
 }
 
 #[test]

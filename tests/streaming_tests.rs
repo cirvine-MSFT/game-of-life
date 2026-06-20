@@ -6,5 +6,5 @@
 //! its file with `#[path]`. See AGENTS.md > Test Style for the same
 //! pattern used elsewhere.
 
-#[path = "streaming/board.rs"]
-mod board;
+#[path = "streaming/streaming_board_tests.rs"]
+mod streaming_board_tests;
