@@ -1,10 +1,10 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SessionInfo } from "../ipc";
-import { useStore } from "../state/store";
-import { lightPalette } from "../theme";
-import { BoardCanvas } from "./BoardCanvas";
+import type { SessionInfo } from "../../src/ipc";
+import { useStore } from "../../src/state/store";
+import { lightPalette } from "../../src/theme";
+import { BoardCanvas } from "../../src/components/BoardCanvas";
 
 interface FillCall {
   style: string;
