@@ -87,3 +87,13 @@ pub fn save_board_snapshot(
     session.save_board_snapshot(&p)?;
     Ok(p.display().to_string())
 }
+
+#[tauri::command]
+pub fn load_board_snapshot(
+    session: State<'_, Arc<RunSession>>,
+    path: String,
+) -> Result<String, SessionError> {
+    let p = PathBuf::from(&path);
+    session.load_board_snapshot(&p)?;
+    Ok(p.display().to_string())
+}

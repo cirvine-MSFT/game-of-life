@@ -13,12 +13,15 @@
 //! decimated in place (every-other) so the Recharts panel never has
 //! to render an arbitrarily large series.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use parking_lot::{Mutex, MutexGuard};
 
-use game_of_life::persistence::{write_board_snapshot, BoardSnapshot, BoardSnapshotWriteError};
+use game_of_life::persistence::{
+    read_board_snapshot_default, write_board_snapshot, BoardSnapshot, BoardSnapshotReadError,
+    BoardSnapshotWriteError,
+};
 use game_of_life::stats::run_statistics::RunStatus;
 use game_of_life::{
     terminal_status_for_outcome, BlinkerBoardInitializer, BoardInitializer, BoardSignature,
@@ -43,6 +46,10 @@ const HISTORY_CAP: usize = 100_000;
 /// keeps semantics consistent between the two front-ends.
 pub const DEFAULT_MAX_BOARD_MEMORY_BYTES: usize = 64 * 1024 * 1024;
 
+/// Default run cap for boards loaded outside the normal frontend-created
+/// session path. Matches the React store's default new-run cap.
+pub const DEFAULT_MAX_ITERATIONS: u64 = 100;
+
 /// Everything inside `RunSession` that the cancel flag does not cover.
 struct SessionData {
     mode: Mode,
@@ -57,7 +64,10 @@ struct SessionData {
     pattern_analyzer: Option<PatternAnalyzer>,
     final_stats: Option<RunStatistics>,
     save_path: Option<PathBuf>,
+    saved_snapshot: Option<Vec<u8>>,
     dirty: bool,
+    revision: u64,
+    worker_generation: u64,
     jump_target: Option<u64>,
     shadow_buf: Vec<u8>,
 }
@@ -77,7 +87,10 @@ impl SessionData {
             pattern_analyzer: None,
             final_stats: None,
             save_path: None,
+            saved_snapshot: None,
             dirty: false,
+            revision: 0,
+            worker_generation: 0,
             jump_target: None,
             shadow_buf: Vec::new(),
         }
@@ -165,6 +178,20 @@ impl RunSession {
         BoardPayload::from_bytes(data.width, data.height, data.iteration, &data.shadow_buf)
     }
 
+    pub fn board_payload_for_worker(&self, worker_generation: u64) -> Option<BoardPayload> {
+        let mut data = self.lock();
+        if data.worker_generation != worker_generation {
+            return None;
+        }
+        data.refresh_shadow();
+        Some(BoardPayload::from_bytes(
+            data.width,
+            data.height,
+            data.iteration,
+            &data.shadow_buf,
+        ))
+    }
+
     /// Cumulative alive counts the stats panel chart consumes. Returns a
     /// clone so callers can drop the lock immediately.
     pub fn alive_history(&self) -> Vec<u64> {
@@ -206,7 +233,7 @@ impl RunSession {
     /// a second lock round-trip. Closes the TOCTOU window where two
     /// concurrent `play` invocations could both see `Paused` and
     /// each spawn a worker.
-    pub fn begin_playing(&self) -> Result<(), SessionError> {
+    pub fn begin_playing(&self) -> Result<u64, SessionError> {
         let mut data = self.lock();
         if !matches!(data.mode, Mode::Paused) {
             return Err(SessionError::WrongMode {
@@ -217,16 +244,18 @@ impl RunSession {
         if data.final_stats.is_some() {
             return Err(SessionError::RunCompleted);
         }
+        data.worker_generation = data.worker_generation.wrapping_add(1);
+        let worker_generation = data.worker_generation;
         data.mode = Mode::Playing;
         drop(data);
         self.cancel.store(false, Ordering::SeqCst);
-        Ok(())
+        Ok(worker_generation)
     }
 
     /// Atomic Paused -> JumpingTo transition with the same race-closing
     /// rationale as `begin_playing`. Caller is responsible for the
     /// (optional) backward restart before spawning the worker.
-    pub fn begin_jumping(&self, target: u64) -> Result<(), SessionError> {
+    pub fn begin_jumping(&self, target: u64) -> Result<u64, SessionError> {
         let mut data = self.lock();
         if !matches!(data.mode, Mode::Paused) {
             return Err(SessionError::WrongMode {
@@ -237,11 +266,13 @@ impl RunSession {
         if data.final_stats.is_some() && target > data.iteration {
             return Err(SessionError::RunCompleted);
         }
+        data.worker_generation = data.worker_generation.wrapping_add(1);
+        let worker_generation = data.worker_generation;
         data.mode = Mode::JumpingTo;
         data.jump_target = Some(target);
         drop(data);
         self.cancel.store(false, Ordering::SeqCst);
-        Ok(())
+        Ok(worker_generation)
     }
 
     /// Sets up a fresh run in Setup mode. Discards any prior in-flight run.
@@ -317,7 +348,10 @@ impl RunSession {
         data.pattern_analyzer = None;
         data.final_stats = None;
         data.save_path = None;
+        data.saved_snapshot = None;
         data.dirty = false;
+        data.revision = data.revision.wrapping_add(1);
+        data.worker_generation = data.worker_generation.wrapping_add(1);
         data.jump_target = None;
         data.shadow_buf = Vec::new();
         self.cancel.store(false, Ordering::SeqCst);
@@ -339,6 +373,7 @@ impl RunSession {
         };
         board.set(x as usize, y as usize, state);
         data.dirty = true;
+        data.revision = data.revision.wrapping_add(1);
         Ok(())
     }
 
@@ -363,6 +398,7 @@ impl RunSession {
         }
         if !edits.is_empty() {
             data.dirty = true;
+            data.revision = data.revision.wrapping_add(1);
         }
         Ok(())
     }
@@ -373,6 +409,7 @@ impl RunSession {
         let board = data.board.as_mut().ok_or(SessionError::NoBoard)?;
         apply_pattern_to(board, pattern);
         data.dirty = true;
+        data.revision = data.revision.wrapping_add(1);
         Ok(())
     }
 
@@ -385,6 +422,7 @@ impl RunSession {
         init.initialize(board)
             .expect("InMemoryBoard editor is infallible");
         data.dirty = true;
+        data.revision = data.revision.wrapping_add(1);
         Ok(())
     }
 
@@ -399,6 +437,7 @@ impl RunSession {
             }
         }
         data.dirty = true;
+        data.revision = data.revision.wrapping_add(1);
         Ok(())
     }
 
@@ -480,6 +519,13 @@ impl RunSession {
         data.pattern_analyzer = Some(analyzer);
         data.final_stats = None;
         data.mode = Mode::Paused;
+        data.dirty = data
+            .saved_snapshot
+            .as_ref()
+            .map(|saved| saved != &snapshot)
+            .unwrap_or(true);
+        data.revision = data.revision.wrapping_add(1);
+        data.worker_generation = data.worker_generation.wrapping_add(1);
         data.jump_target = None;
         Ok(())
     }
@@ -500,6 +546,7 @@ impl RunSession {
         data.stats = None;
         data.pattern_analyzer = None;
         data.final_stats = None;
+        data.worker_generation = data.worker_generation.wrapping_add(1);
         data.jump_target = None;
         Ok(())
     }
@@ -549,6 +596,27 @@ impl RunSession {
         data.jump_target = target;
     }
 
+    pub fn finish_worker(&self, worker_generation: u64) {
+        let mut data = self.lock();
+        if data.worker_generation != worker_generation {
+            return;
+        }
+        data.jump_target = None;
+        if !matches!(data.mode, Mode::Setup) {
+            data.mode = Mode::Paused;
+        }
+        self.cancel.store(false, Ordering::SeqCst);
+    }
+
+    pub fn worker_should_stop(&self, worker_generation: u64) -> bool {
+        let data = self.lock();
+        data.worker_generation != worker_generation || self.cancel.load(Ordering::SeqCst)
+    }
+
+    pub fn worker_is_current(&self, worker_generation: u64) -> bool {
+        self.lock().worker_generation == worker_generation
+    }
+
     pub fn request_cancel(&self) {
         self.cancel.store(true, Ordering::SeqCst);
     }
@@ -576,7 +644,26 @@ impl RunSession {
     /// stability confirmation for the previous board, so it finalizes the run
     /// without incrementing the visible iteration counter.
     pub fn advance_one(&self) -> Result<AdvanceTick, SessionError> {
+        self.advance_one_inner(None)
+    }
+
+    pub fn advance_one_for_worker(
+        &self,
+        worker_generation: u64,
+    ) -> Result<AdvanceTick, SessionError> {
+        self.advance_one_inner(Some(worker_generation))
+    }
+
+    fn advance_one_inner(
+        &self,
+        worker_generation: Option<u64>,
+    ) -> Result<AdvanceTick, SessionError> {
         let mut data = self.lock();
+        if let Some(worker_generation) = worker_generation {
+            if data.worker_generation != worker_generation {
+                return Err(SessionError::WorkerStopped);
+            }
+        }
         if data.final_stats.is_some() {
             return Err(SessionError::RunCompleted);
         }
@@ -585,6 +672,10 @@ impl RunSession {
             board.advance_generation_with_signature()
         };
         let outcome = summary.outcome;
+        if !outcome.is_stable() {
+            data.dirty = true;
+            data.revision = data.revision.wrapping_add(1);
+        }
 
         let total_cells = data.width as u64 * data.height as u64;
         let terminal_status = terminal_status_for_outcome(outcome);
@@ -662,18 +753,108 @@ impl RunSession {
     /// Wraps `write_board_snapshot`, which refuses to overwrite — the
     /// frontend is expected to handle overwrite confirmation by
     /// removing the file first if the user OK's it.
-    pub fn save_board_snapshot(&self, path: &std::path::Path) -> Result<(), SessionError> {
+    pub fn save_board_snapshot(&self, path: &Path) -> Result<(), SessionError> {
         let board = {
             let data = self.lock();
-            data.board.clone().ok_or(SessionError::NoBoard)?
+            (
+                data.board.clone().ok_or(SessionError::NoBoard)?,
+                data.revision,
+            )
         };
-        let snapshot = BoardSnapshot::for_board(board);
+        let saved_snapshot = collect_cells(&board.0);
+        let snapshot = BoardSnapshot::for_board(board.0);
         write_board_snapshot(path, &snapshot).map_err(|e| match e {
             BoardSnapshotWriteError::OutputExists { path } => SessionError::SaveBoardSnapshot(
                 format!("Refusing to overwrite existing file '{}'", path.display()),
             ),
             BoardSnapshotWriteError::Io(io) => SessionError::SaveBoardSnapshot(io.to_string()),
-        })
+        })?;
+        let mut data = self.lock();
+        data.save_path = Some(path.to_path_buf());
+        data.saved_snapshot = Some(saved_snapshot);
+        if data.revision == board.1 {
+            data.dirty = false;
+        }
+        Ok(())
+    }
+
+    /// Loads a standalone `GOL-BOARD-SNAPSHOT v1` file into Setup mode.
+    /// Invalid files leave the current session untouched.
+    pub fn load_board_snapshot(&self, path: &Path) -> Result<(), SessionError> {
+        let snapshot = read_board_snapshot_default(path, DEFAULT_MAX_BOARD_MEMORY_BYTES)
+            .map_err(|e| SessionError::LoadBoardSnapshot(load_snapshot_error_message(e)))?;
+        let board = snapshot.board;
+        let saved_snapshot = collect_cells(&board);
+        let width = u32::try_from(board.width()).map_err(|_| {
+            SessionError::LoadBoardSnapshot(format!(
+                "Loaded board width {} exceeds desktop limits.",
+                board.width()
+            ))
+        })?;
+        let height = u32::try_from(board.height()).map_err(|_| {
+            SessionError::LoadBoardSnapshot(format!(
+                "Loaded board height {} exceeds desktop limits.",
+                board.height()
+            ))
+        })?;
+
+        self.stop_worker_and_wait();
+
+        let mut data = self.lock();
+        let max_iterations = if data.max_iterations == 0 {
+            DEFAULT_MAX_ITERATIONS
+        } else {
+            data.max_iterations
+        };
+        data.mode = Mode::Setup;
+        data.width = width;
+        data.height = height;
+        data.board = Some(board);
+        data.initial_snapshot = None;
+        data.iteration = 0;
+        data.max_iterations = max_iterations;
+        data.alive_history = Vec::new();
+        data.stats = None;
+        data.pattern_analyzer = None;
+        data.final_stats = None;
+        data.save_path = Some(path.to_path_buf());
+        data.saved_snapshot = Some(saved_snapshot);
+        data.dirty = false;
+        data.revision = data.revision.wrapping_add(1);
+        data.worker_generation = data.worker_generation.wrapping_add(1);
+        data.jump_target = None;
+        data.shadow_buf = Vec::new();
+        Ok(())
+    }
+}
+
+fn load_snapshot_error_message(error: BoardSnapshotReadError) -> String {
+    match error {
+        BoardSnapshotReadError::Io(_) => {
+            "Could not read the selected board snapshot. Confirm the file still exists and is readable."
+                .to_string()
+        }
+        BoardSnapshotReadError::UnexpectedFileKind {
+            expected, actual, ..
+        } => format!("Selected file is a {actual}, but expected a {expected}."),
+        BoardSnapshotReadError::LoadedBoardSize(e) => e.to_string(),
+        BoardSnapshotReadError::FileTooLarge {
+            actual_bytes,
+            limit_bytes,
+            ..
+        } => format!(
+            "Selected file is {actual_bytes} bytes, which exceeds the {limit_bytes}-byte input file limit."
+        ),
+        BoardSnapshotReadError::MalformedSizeHeader { .. } => {
+            "Selected board snapshot has a malformed size header. Expected WIDTHxHEIGHT, for example 10x10."
+                .to_string()
+        }
+        BoardSnapshotReadError::Magic(_)
+        | BoardSnapshotReadError::InvalidTimestamp(_)
+        | BoardSnapshotReadError::Parse(_) => {
+            "Selected file is not a valid Game of Life board snapshot. Expected a GOL-BOARD-SNAPSHOT v1 .gol file with a #/. board grid."
+                .to_string()
+        }
     }
 }
 
@@ -740,6 +921,8 @@ pub enum SessionError {
     InvalidMaxIterations { new_total: u64 },
     #[error("the run has already completed; restart or edit_board to continue")]
     RunCompleted,
+    #[error("worker stopped")]
+    WorkerStopped,
     #[error("board width and height must be greater than zero")]
     ZeroDimension,
     #[error(
@@ -755,6 +938,8 @@ pub enum SessionError {
     },
     #[error("save board snapshot failed: {0}")]
     SaveBoardSnapshot(String),
+    #[error("load board snapshot failed: {0}")]
+    LoadBoardSnapshot(String),
     #[error(transparent)]
     Allocation(#[from] InMemoryBoardCreationError),
     #[error(transparent)]
@@ -774,9 +959,11 @@ impl serde::Serialize for SessionError {
             SessionError::OutOfBounds { .. } => "outOfBounds",
             SessionError::InvalidMaxIterations { .. } => "invalidMaxIterations",
             SessionError::RunCompleted => "runCompleted",
+            SessionError::WorkerStopped => "workerStopped",
             SessionError::ZeroDimension => "zeroDimension",
             SessionError::StreamingNotImplemented { .. } => "streamingNotImplemented",
             SessionError::SaveBoardSnapshot(_) => "saveBoardSnapshot",
+            SessionError::LoadBoardSnapshot(_) => "loadBoardSnapshot",
             SessionError::Allocation(_) => "allocation",
             SessionError::RandomInit(_) => "randomInit",
         };

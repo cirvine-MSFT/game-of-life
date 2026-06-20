@@ -12,6 +12,25 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   } as unknown as typeof ResizeObserver;
 }
 
+const getCanvasContext = vi.fn((contextId: string) => {
+  if (contextId !== "2d") {
+    return null;
+  }
+  return {
+    setTransform: vi.fn(),
+    fillRect: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    stroke: vi.fn(),
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 1,
+  } as unknown as CanvasRenderingContext2D;
+});
+HTMLCanvasElement.prototype.getContext =
+  getCanvasContext as unknown as HTMLCanvasElement["getContext"];
+
 // Stub out Tauri's IPC bridge so component tests can render without a
 // real Tauri runtime. Each command returns a sensible default; tests
 // that need richer behaviour override with `vi.mocked(...)`.

@@ -42,6 +42,13 @@ describe("App", () => {
     expect(screen.queryByLabelText("Collapse stats panel")).not.toBeInTheDocument();
   });
 
+  it("exposes load and save together in the primary file action surface", async () => {
+    render(<App />);
+
+    expect(await screen.findByText("Load board")).toBeInTheDocument();
+    expect(screen.getByText("Save board")).toBeInTheDocument();
+  });
+
   it("collapses to a stable tools rail with a non-playback trigger", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -61,5 +68,18 @@ describe("App", () => {
 
     expect(screen.getByRole("radio", { name: "Dark" })).toBeChecked();
     expect(useStore.getState().theme).toBe("dark");
+  });
+
+  it("shows load and save workflow details in the files tab", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: /Files/i }));
+
+    expect(screen.getByRole("region", { name: "Files panel" })).toBeInTheDocument();
+    expect(screen.getByText(/restores the board layout into Setup mode at iteration 0/i)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Load board" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Save board" }).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Current board file status")).toBeInTheDocument();
   });
 });

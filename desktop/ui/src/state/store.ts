@@ -27,6 +27,7 @@ import {
   getFinalStats,
   getSession,
   jumpTo,
+  loadBoardSnapshot,
   onBoardTick,
   onJumpProgress,
   onRunCompleted,
@@ -99,6 +100,7 @@ interface AppState {
   setTheme: (theme: ThemeChoice) => void;
 
   // Persistence
+  loadBoardSnapshot: () => Promise<void>;
   saveBoardSnapshot: () => Promise<void>;
 
   // Tear-down
@@ -112,6 +114,21 @@ const DEFAULT_NEW_RUN: CreateRunArgs = {
   height: 20,
   source: { kind: "pattern", value: "demo" },
   maxIterations: 100,
+};
+
+const messageFromUnknown = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+  return String(error);
 };
 
 export const useStore = create<AppState>((set, get) => ({
@@ -311,21 +328,67 @@ export const useStore = create<AppState>((set, get) => ({
     set({ theme });
   },
 
+  loadBoardSnapshot: async () => {
+    const { open, ask, message } = await import("@tauri-apps/plugin-dialog");
+    const session = get().session;
+    if (session?.dirty) {
+      const discard = await ask(
+        "The current board has unsaved changes. Discard them and load another board?",
+        { title: "Discard unsaved changes?", kind: "warning" },
+      );
+      if (!discard) {
+        return;
+      }
+    }
+
+    const chosen = await open({
+      title: "Load board snapshot",
+      multiple: false,
+      filters: [{ name: "Game of Life board", extensions: ["gol"] }],
+    });
+    if (!chosen) {
+      return;
+    }
+    const path = Array.isArray(chosen) ? chosen[0] : chosen;
+    if (!path) {
+      return;
+    }
+
+    try {
+      await loadBoardSnapshot(path);
+    } catch (error) {
+      await message(messageFromUnknown(error), {
+        title: "Unable to load board",
+        kind: "error",
+      });
+      return;
+    }
+
+    await get().refreshSession();
+    await get().refreshBoard();
+    await get().refreshHistory();
+    set({ latestTick: null, finalStats: null, jumpProgress: null });
+  },
+
   saveBoardSnapshot: async () => {
     // Lazy-import so the dialog plugin is only loaded when the user
     // actually triggers a save. Keeps the initial JS bundle smaller
     // and avoids touching the Tauri runtime on smoke tests.
-    const { save, ask } = await import("@tauri-apps/plugin-dialog");
+    const { save, ask, message } = await import("@tauri-apps/plugin-dialog");
     const session = get().session;
     if (!session) {
       return;
     }
     const defaultName = `board-iter-${session.iteration}.gol`;
     let defaultPath: string | undefined;
-    try {
-      defaultPath = `${await defaultSaveDir()}/${defaultName}`;
-    } catch {
-      defaultPath = defaultName;
+    if (session.savePath) {
+      defaultPath = session.savePath;
+    } else {
+      try {
+        defaultPath = `${await defaultSaveDir()}/${defaultName}`;
+      } catch {
+        defaultPath = defaultName;
+      }
     }
     const chosen = await save({
       title: "Save board snapshot",
@@ -338,21 +401,34 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       await saveBoardSnapshot(chosen, false);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = messageFromUnknown(error);
       if (msg.toLowerCase().includes("refusing to overwrite")) {
         const overwrite = await ask(
           `${chosen} already exists. Overwrite?`,
           { title: "Overwrite file?", kind: "warning" },
         );
         if (overwrite) {
-          await saveBoardSnapshot(chosen, true);
+          try {
+            await saveBoardSnapshot(chosen, true);
+          } catch (overwriteError) {
+            await message(messageFromUnknown(overwriteError), {
+              title: "Unable to save board",
+              kind: "error",
+            });
+            return;
+          }
         } else {
           return;
         }
       } else {
-        throw error;
+        await message(msg, {
+          title: "Unable to save board",
+          kind: "error",
+        });
+        return;
       }
     }
+    await get().refreshSession();
   },
 
   disconnect: () => {

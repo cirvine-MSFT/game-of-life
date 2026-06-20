@@ -92,7 +92,11 @@ export interface SessionErrorPayload {
     | "outOfBounds"
     | "invalidMaxIterations"
     | "runCompleted"
+    | "workerStopped"
     | "zeroDimension"
+    | "streamingNotImplemented"
+    | "saveBoardSnapshot"
+    | "loadBoardSnapshot"
     | "allocation"
     | "randomInit";
   message: string;

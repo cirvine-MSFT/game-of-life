@@ -3,18 +3,85 @@
 //! All tests drive only the public API; per project convention there are
 //! no white-box tests of `SessionData` internals.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use game_of_life::persistence::{write_board_snapshot, BoardSnapshot};
+use game_of_life::{BoardEditor, CellCoordinate, CellState, InMemoryBoard};
 use game_of_life_desktop_lib::ipc_types::{
     CellEdit, InitialSource, IpcRunStatus, Mode, PatternName,
 };
-use game_of_life_desktop_lib::session::RunSession;
+use game_of_life_desktop_lib::session::{RunSession, SessionError};
+
+static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
 fn fresh_session(width: u32, height: u32, max_iter: u64) -> Arc<RunSession> {
     let s = Arc::new(RunSession::new());
     s.create_run(width, height, InitialSource::Empty, max_iter, None)
         .expect("create_run");
     s
+}
+
+fn unique_snapshot_path(label: &str) -> std::path::PathBuf {
+    let seq = TEMP_SEQ.fetch_add(1, Ordering::SeqCst);
+    std::env::temp_dir().join(format!(
+        "gol-desktop-session-{label}-{}-{seq}.gol",
+        std::process::id()
+    ))
+}
+
+fn board_from_grid(lines: &[&str]) -> InMemoryBoard {
+    let height = lines.len();
+    let width = lines.first().map(|line| line.len()).unwrap_or(0);
+    let mut board = InMemoryBoard::new(width, height);
+    for (y, row) in lines.iter().enumerate() {
+        for (x, ch) in row.chars().enumerate() {
+            let state = if ch == '#' {
+                CellState::Alive
+            } else {
+                CellState::Dead
+            };
+            board
+                .set_cell(CellCoordinate::new(x, y), state)
+                .expect("grid coordinates are in bounds");
+        }
+    }
+    board
+}
+
+fn generated_board(width: usize, height: usize) -> InMemoryBoard {
+    let mut board = InMemoryBoard::new(width, height);
+    for y in 0..height {
+        for x in 0..width {
+            if ((x * 17) + (y * 31)) % 7 == 0 {
+                board
+                    .set_cell(CellCoordinate::new(x, y), CellState::Alive)
+                    .expect("generated coordinates are in bounds");
+            }
+        }
+    }
+    board
+}
+
+fn board_bytes(board: &InMemoryBoard) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(board.width() * board.height());
+    for y in 0..board.height() {
+        for x in 0..board.width() {
+            bytes.push(if matches!(board.get(x, y), CellState::Alive) {
+                1
+            } else {
+                0
+            });
+        }
+    }
+    bytes
+}
+
+fn write_snapshot_file(label: &str, board: InMemoryBoard) -> std::path::PathBuf {
+    let path = unique_snapshot_path(label);
+    let _ = std::fs::remove_file(&path);
+    write_board_snapshot(&path, &BoardSnapshot::for_board(board)).expect("write snapshot");
+    path
 }
 
 fn paint_glider(s: &RunSession) {
@@ -354,6 +421,40 @@ fn restart_restores_initial_snapshot_and_resets_iteration() {
 }
 
 #[test]
+fn restart_after_saving_later_generation_marks_board_dirty() {
+    let s = fresh_session(3, 3, 10);
+    s.paint_cells(&[
+        CellEdit {
+            x: 0,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 1,
+            y: 1,
+            alive: true,
+        },
+        CellEdit {
+            x: 2,
+            y: 1,
+            alive: true,
+        },
+    ])
+    .unwrap();
+    s.start_run().unwrap();
+    s.advance_one().unwrap();
+    let path = unique_snapshot_path("saved-later-generation");
+    let _ = std::fs::remove_file(&path);
+    s.save_board_snapshot(&path).unwrap();
+    assert!(!s.info().dirty);
+
+    s.restart().unwrap();
+
+    assert!(s.info().dirty);
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn edit_board_returns_to_setup_and_drops_run_state() {
     let s = fresh_session(3, 3, 10);
     s.set_cell(0, 0, true).unwrap();
@@ -522,8 +623,131 @@ fn save_board_snapshot_writes_a_gol_file_and_round_trips() {
         .to_string()
         .to_lowercase()
         .contains("refusing to overwrite"));
+    let info = s.info();
+    assert_eq!(info.save_path, Some(tmp.display().to_string()));
+    assert!(!info.dirty);
 
     fs::remove_file(&tmp).ok();
+}
+
+#[test]
+fn load_board_snapshot_restores_still_life_into_setup_mode() {
+    let board = board_from_grid(&["....", ".##.", ".##.", "...."]);
+    let expected = board_bytes(&board);
+    let path = write_snapshot_file("still-life", board);
+    let s = fresh_session(2, 2, 25);
+    s.set_cell(0, 0, true).unwrap();
+
+    s.load_board_snapshot(&path).unwrap();
+
+    let info = s.info();
+    assert_eq!(info.mode, Mode::Setup);
+    assert_eq!(info.iteration, 0);
+    assert_eq!(info.width, 4);
+    assert_eq!(info.height, 4);
+    assert_eq!(info.max_iterations, 25);
+    assert_eq!(info.save_path, Some(path.display().to_string()));
+    assert!(!info.dirty);
+    assert_eq!(s.alive_history(), Vec::<u64>::new());
+    assert_eq!(s.board_payload().decoded_cells().unwrap(), expected);
+
+    s.start_run().unwrap();
+    let tick = s.advance_one().unwrap();
+    assert_eq!(tick.iteration, 0);
+    assert_eq!(s.info().status, Some(IpcRunStatus::Stable));
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn load_board_snapshot_blinker_advances_deterministically() {
+    let board = board_from_grid(&["...", "###", "..."]);
+    let path = write_snapshot_file("blinker", board);
+    let s = fresh_session(1, 1, 10);
+
+    s.load_board_snapshot(&path).unwrap();
+    assert_eq!(
+        s.board_payload().decoded_cells().unwrap(),
+        vec![0, 0, 0, 1, 1, 1, 0, 0, 0]
+    );
+
+    s.start_run().unwrap();
+    let tick = s.advance_one().unwrap();
+
+    assert_eq!(tick.iteration, 1);
+    assert!(s.info().dirty);
+    assert_eq!(
+        s.board_payload().decoded_cells().unwrap(),
+        vec![0, 1, 0, 0, 1, 0, 0, 1, 0]
+    );
+    s.restart().unwrap();
+    assert!(!s.info().dirty);
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn stale_worker_generation_cannot_advance_newer_run() {
+    let s = fresh_session(3, 3, 10);
+    s.set_cell(1, 1, true).unwrap();
+    s.start_run().unwrap();
+    let stale = s.begin_playing().unwrap();
+    s.finish_worker(stale);
+    let current = s.begin_playing().unwrap();
+
+    let err = s.advance_one_for_worker(stale).unwrap_err();
+
+    assert!(matches!(err, SessionError::WorkerStopped));
+    assert_eq!(s.info().iteration, 0);
+    s.finish_worker(current);
+}
+
+#[test]
+fn load_board_snapshot_round_trips_larger_generated_board_bytes() {
+    let board = generated_board(17, 13);
+    let expected = board_bytes(&board);
+    let path = write_snapshot_file("larger-generated", board);
+    let s = RunSession::new();
+
+    s.load_board_snapshot(&path).unwrap();
+
+    let info = s.info();
+    assert_eq!(info.mode, Mode::Setup);
+    assert_eq!(info.iteration, 0);
+    assert_eq!(info.width, 17);
+    assert_eq!(info.height, 13);
+    assert_eq!(info.max_iterations, 100);
+    assert_eq!(info.save_path, Some(path.display().to_string()));
+    assert!(!info.dirty);
+    assert_eq!(s.board_payload().decoded_cells().unwrap(), expected);
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn negative_load_board_snapshot_reports_invalid_files_without_replacing_board() {
+    let path = unique_snapshot_path("invalid");
+    std::fs::write(&path, "secret first line that must not cross IPC").unwrap();
+    let s = fresh_session(3, 3, 10);
+    s.set_cell(1, 1, true).unwrap();
+    s.start_run().unwrap();
+    s.begin_playing().unwrap();
+    let before = s.board_payload().decoded_cells().unwrap();
+
+    let err = s.load_board_snapshot(&path).unwrap_err();
+
+    let msg = err.to_string();
+    assert!(msg.contains("load board snapshot failed"), "got: {msg}");
+    assert!(
+        msg.contains("not a valid Game of Life board snapshot"),
+        "got: {msg}"
+    );
+    assert!(!msg.contains("secret first line"), "got: {msg}");
+    assert_eq!(s.info().mode, Mode::Playing);
+    assert_eq!(s.info().width, 3);
+    assert_eq!(s.board_payload().decoded_cells().unwrap(), before);
+
+    std::fs::remove_file(&path).ok();
 }
 
 #[test]

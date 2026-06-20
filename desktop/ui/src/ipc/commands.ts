@@ -32,6 +32,9 @@ export const saveBoardSnapshot = (
   overwrite: boolean,
 ): Promise<string> => invoke("save_board_snapshot", { path, overwrite });
 
+export const loadBoardSnapshot = (path: string): Promise<string> =>
+  invoke("load_board_snapshot", { path });
+
 // --- setup_commands ---
 
 export interface CreateRunArgs {

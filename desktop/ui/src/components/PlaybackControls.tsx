@@ -16,6 +16,7 @@ import {
 import {
   ArrowResetRegular,
   CursorRegular,
+  FolderOpenRegular,
   NextRegular,
   PauseRegular,
   PlayRegular,
@@ -78,6 +79,7 @@ export const PlaybackControls = () => {
   const restart = useStore((s) => s.restart);
   const editBoard = useStore((s) => s.editBoard);
   const jumpTo = useStore((s) => s.jumpTo);
+  const loadBoardSnapshot = useStore((s) => s.loadBoardSnapshot);
   const saveBoardSnapshot = useStore((s) => s.saveBoardSnapshot);
   const [gps, setGps] = useState(5);
   const [jumpTarget, setJumpTarget] = useState("");
@@ -179,8 +181,13 @@ export const PlaybackControls = () => {
       )}
 
       <ToolbarDivider />
+      <Tooltip content="Load a .gol board snapshot" relationship="label">
+        <ToolbarButton icon={<FolderOpenRegular />} onClick={() => void loadBoardSnapshot()}>
+          Load board
+        </ToolbarButton>
+      </Tooltip>
       <Tooltip
-        content="Save the current board as a .gol snapshot (Ctrl+S)"
+        content="Save the current board as a .gol snapshot"
         relationship="label"
       >
         <ToolbarButton
