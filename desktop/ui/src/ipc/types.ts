@@ -6,7 +6,7 @@
 
 export type Mode = "setup" | "paused" | "playing" | "jumpingTo";
 
-export type IpcRunStatus = "maxIterations" | "extinct" | "stable";
+export type IpcRunStatus = "maxIterations" | "extinct" | "stable" | "cyclic";
 
 export type PatternName = "demo" | "blinker" | "fullyAlive";
 
@@ -53,6 +53,9 @@ export interface IpcRunStatistics {
   totalDeaths: number;
   iterationsRun: number;
   status: IpcRunStatus;
+  cycleStartGeneration?: number | null;
+  cycleDetectedGeneration?: number | null;
+  cyclePeriod?: number | null;
 }
 
 export interface RunCompleted {

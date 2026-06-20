@@ -162,7 +162,7 @@ mod normal_tests {
     }
 
     #[test]
-    fn oscillator_run_does_not_stop_as_stable() {
+    fn oscillator_run_stops_as_cycle_not_stable() {
         let output = run_cli(&[
             "--board-size",
             "5x5",
@@ -178,7 +178,8 @@ mod normal_tests {
 
         let stdout = stdout(&output);
         assert!(!stdout.contains("Stable state reached"));
-        assert!(stdout.contains("Simulation complete: 2 iterations (max_iterations)"));
+        assert!(stdout.contains("Cycle detected at generation 2: period 2"));
+        assert!(stdout.contains("Simulation complete: 2 iterations (cyclic)"));
     }
 }
 

@@ -334,13 +334,15 @@ mod continuation_tests {
         // run for 6 more, and the new record's iterations_run reflects that.
         let dir = unique_temp_dir("continue_cumulative");
         let runs_dir = dir.join("runs");
+        let glider = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("examples")
+            .join("patterns")
+            .join("glider.gol");
         run_cli(&[
-            "--board-size",
-            "5x5",
+            "--load-board",
+            glider.to_str().unwrap(),
             "--max-iterations",
             "4",
-            "--initial-board",
-            "blinker",
             "--runs-dir",
             runs_dir.to_str().unwrap(),
         ]);
@@ -369,13 +371,15 @@ mod continuation_tests {
         // Source ran 4 iterations; --max-iterations 4 has nothing left to do.
         let dir = unique_temp_dir("continue_cum_equal");
         let runs_dir = dir.join("runs");
+        let glider = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("examples")
+            .join("patterns")
+            .join("glider.gol");
         run_cli(&[
-            "--board-size",
-            "5x5",
+            "--load-board",
+            glider.to_str().unwrap(),
             "--max-iterations",
             "4",
-            "--initial-board",
-            "blinker",
             "--runs-dir",
             runs_dir.to_str().unwrap(),
         ]);
@@ -858,6 +862,47 @@ mod stats_tests {
             initial + births - deaths,
             final_alive,
             "alive-cell conservation: initial + births - deaths must equal final"
+        );
+    }
+
+    #[test]
+    fn cyclic_run_reports_period_and_replays_successfully() {
+        let dir = unique_temp_dir("cyclic");
+        let runs_dir = dir.join("runs");
+        let output = run_cli(&[
+            "--board-size",
+            "5x5",
+            "--max-iterations",
+            "10",
+            "--initial-board",
+            "blinker",
+            "--runs-dir",
+            runs_dir.to_str().unwrap(),
+        ]);
+        assert!(output.status.success(), "stderr: {}", stderr(&output));
+        let stdout_text = stdout(&output);
+        assert!(
+            stdout_text.contains("Cycle detected at generation 2: period 2"),
+            "stdout:\n{stdout_text}"
+        );
+        assert!(
+            stdout_text.contains("Simulation complete: 2 iterations (cyclic)"),
+            "stdout:\n{stdout_text}"
+        );
+
+        let source = one_run_record_in(&runs_dir);
+        let body = std::fs::read_to_string(&source).unwrap();
+        assert_eq!(extract_field(&body, "status"), Some("cyclic"));
+        assert_eq!(extract_u64(&body, "iterations_run"), 2);
+        assert_eq!(extract_u64(&body, "cycle_start_generation"), 0);
+        assert_eq!(extract_u64(&body, "cycle_detected_generation"), 2);
+        assert_eq!(extract_u64(&body, "cycle_period"), 2);
+
+        let replay = run_cli(&["--replay", source.to_str().unwrap()]);
+        assert!(
+            replay.status.success(),
+            "replay stderr: {}",
+            stderr(&replay)
         );
     }
 }

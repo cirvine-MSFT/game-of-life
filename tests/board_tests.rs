@@ -1,4 +1,6 @@
-use game_of_life::{CellState, InMemoryBoard, InMemoryBoardCreationError};
+use game_of_life::{
+    AdvanceOutcome, BoardEditor, BoardUpdater, CellState, InMemoryBoard, InMemoryBoardCreationError,
+};
 
 fn board_from_grid(lines: &[&str]) -> InMemoryBoard {
     let height = lines.len();
@@ -52,6 +54,28 @@ fn assert_still_life_is_stable(lines: &[&str], pattern_name: &str) {
 
 mod normal_tests {
     use super::*;
+
+    struct LegacyStyleUpdater;
+
+    impl BoardUpdater for LegacyStyleUpdater {
+        fn advance_generation<B: BoardEditor + ?Sized>(
+            &self,
+            _board: &mut B,
+        ) -> Result<AdvanceOutcome, B::Error> {
+            Ok(AdvanceOutcome::from_counts(0, 0, 0))
+        }
+    }
+
+    #[test]
+    fn board_updater_signature_path_has_backward_compatible_default() {
+        let mut board = InMemoryBoard::new(1, 1);
+        let summary = LegacyStyleUpdater
+            .advance_generation_with_signature(&mut board)
+            .unwrap();
+
+        assert_eq!(summary.outcome, AdvanceOutcome::from_counts(0, 0, 0));
+        assert!(summary.signature.is_none());
+    }
 
     #[test]
     fn still_life_block_remains_stable() {

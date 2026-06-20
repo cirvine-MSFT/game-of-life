@@ -34,7 +34,7 @@ To capture an interesting state from a live run and turn it into a new pattern, 
 
 ## `negative/` — these are supposed to fail
 
-Every file in `negative/` triggers a different error class. Each one is documented below with the command to reproduce, the abridged error you should see on stderr, and what the file deliberately gets wrong. The behavior of each is also enforced by integration tests in [`tests/persistence_cli_tests.rs`](../tests/persistence_cli_tests.rs) — these files aren't the test inputs themselves, but they exercise the same code paths.
+Every file in `negative/` triggers a different error class. Each one is documented below with the command to reproduce, the abridged error you should see on stderr, and what the file deliberately gets wrong. The behavior of each is also enforced by integration tests in [`tests/persistence/cli_tests.rs`](../tests/persistence/cli_tests.rs) — these files aren't the test inputs themselves, but they exercise the same code paths.
 
 > Each command below exits with a non-zero status. That's the point — they are demonstrations of how the tool surfaces malformed input.
 

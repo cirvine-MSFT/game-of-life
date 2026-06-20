@@ -84,4 +84,20 @@ describe("SessionInfo shape", () => {
     };
     expect(info.status).toBe("stable");
   });
+
+  it("accepts a completed cyclic session", () => {
+    const info: SessionInfo = {
+      mode: "paused",
+      iteration: 2,
+      width: 5,
+      height: 5,
+      maxIterations: 10,
+      savePath: null,
+      dirty: false,
+      completed: true,
+      jumpTarget: null,
+      status: "cyclic",
+    };
+    expect(info.status).toBe("cyclic");
+  });
 });

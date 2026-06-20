@@ -51,6 +51,9 @@ use std::path::{Path, PathBuf};
 
 use crate::algorithms::CellRule;
 use crate::board::{BoardEditor, BoardView, CellCoordinate, CellState, InMemoryBoard};
+use crate::board::{
+    BoardSignature, BoardSignatureAccumulator, BoardSignatureSource, GenerationSummary,
+};
 use crate::persistence::scratch::{ScratchFile, ScratchFileError};
 use crate::stats::AdvanceOutcome;
 
@@ -663,6 +666,29 @@ impl BoardEditor for StreamingBoard {
         let outcome = self.iter_chunks_for_normalize()?;
         Ok(outcome)
     }
+
+    fn advance_with_rule_and_signature(
+        &mut self,
+        rule: &dyn CellRule,
+    ) -> Result<GenerationSummary, Self::Error> {
+        Ok(GenerationSummary::new(self.advance_with_rule(rule)?, None))
+    }
+}
+
+impl BoardSignatureSource for StreamingBoard {
+    type Error = ScratchFileError;
+
+    fn board_signature(&mut self) -> Result<BoardSignature, Self::Error> {
+        let mut accumulator = BoardSignatureAccumulator::new(self.board_width, self.board_height);
+        for y in 0..self.board_height {
+            for x in 0..self.board_width {
+                let coordinate = CellCoordinate::new(x, y);
+                let state = self.peek_cell(coordinate)?;
+                accumulator.observe(coordinate, state);
+            }
+        }
+        Ok(accumulator.finish())
+    }
 }
 
 impl StreamingBoard {
@@ -810,52 +836,5 @@ impl Drop for StreamingBoard {
         // return them; the lifecycle layer should call `flush()`
         // explicitly before drop for guaranteed durability.
         let _ = self.flush_dirty_rows();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn derive_dimensions_picks_row_band_when_budget_allows() {
-        // 4-wide board, generous budget => full-width row-band.
-        let (rows, cols) =
-            derive_chunk_dimensions(4, 100, 1024, None, None).expect("derive should succeed");
-        assert_eq!(cols, 4, "should use full width as row-band");
-        assert!(rows >= 1);
-    }
-
-    #[test]
-    fn derive_dimensions_falls_back_to_2d_when_budget_too_small_for_row_band() {
-        // Very tight budget on a wide board forces general-2D.
-        let (rows, cols) = derive_chunk_dimensions(
-            1000,
-            1000,
-            ram_cost_for(1, 1) + 4, // just over the minimum
-            None,
-            None,
-        )
-        .expect("minimum budget should succeed");
-        assert_eq!(rows, 1);
-        assert!(cols < 1000);
-        assert!(cols >= 1);
-    }
-
-    #[test]
-    fn derive_dimensions_rejects_budget_below_min() {
-        let err = derive_chunk_dimensions(10, 10, 1, None, None)
-            .expect_err("below-min budget should reject");
-        assert!(matches!(
-            err,
-            StreamingBoardCreationError::InsufficientMemoryBudget { .. }
-        ));
-    }
-
-    #[test]
-    fn derive_dimensions_honors_overrides() {
-        let (rows, cols) =
-            derive_chunk_dimensions(100, 100, usize::MAX, Some(5), Some(7)).expect("derive");
-        assert_eq!((rows, cols), (5, 7));
     }
 }

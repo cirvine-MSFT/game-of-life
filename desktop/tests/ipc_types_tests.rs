@@ -3,7 +3,7 @@
 //! These are integration tests per the project convention; only the public
 //! API of `game_of_life_desktop_lib::ipc_types` is exercised.
 
-use game_of_life::stats::run_statistics::RunStatus;
+use game_of_life::stats::run_statistics::{CycleStatistics, RunStatus};
 use game_of_life::{AdvanceOutcome, CellState, RunStatistics};
 use game_of_life_desktop_lib::ipc_types::{
     AdvanceTick, BoardPayload, CellEdit, InitialSource, IpcCellState, IpcRunStatistics,
@@ -28,6 +28,23 @@ fn ipc_cell_state_collapses_transitional_variants_to_alive_or_dead() {
         IpcCellState::from_core(CellState::Resurrecting),
         IpcCellState::Alive,
     );
+}
+
+#[test]
+fn ipc_cell_state_round_trips_normalized_core_state() {
+    for state in [
+        CellState::Dead,
+        CellState::Alive,
+        CellState::Dying,
+        CellState::Resurrecting,
+    ] {
+        let ipc = IpcCellState::from_core(state);
+        let back = ipc.to_core();
+        match state {
+            CellState::Alive | CellState::Resurrecting => assert_eq!(back, CellState::Alive),
+            CellState::Dead | CellState::Dying => assert_eq!(back, CellState::Dead),
+        }
+    }
 }
 
 #[test]
@@ -67,6 +84,7 @@ fn run_statistics_conversion_preserves_every_field() {
         total_deaths: 106,
         iterations_run: 25,
         status: RunStatus::Extinct,
+        cycle: None,
     };
     let ipc = IpcRunStatistics::from(&s);
     assert_eq!(ipc.initial_alive_count, 10);
@@ -79,6 +97,36 @@ fn run_statistics_conversion_preserves_every_field() {
     assert_eq!(ipc.total_deaths, 106);
     assert_eq!(ipc.iterations_run, 25);
     assert_eq!(ipc.status, IpcRunStatus::Extinct);
+    assert_eq!(ipc.cycle_start_generation, None);
+    assert_eq!(ipc.cycle_detected_generation, None);
+    assert_eq!(ipc.cycle_period, None);
+}
+
+#[test]
+fn run_statistics_conversion_preserves_cycle_metadata() {
+    let s = RunStatistics {
+        initial_alive_count: 3,
+        final_alive_count: 3,
+        peak_alive_count: 3,
+        peak_alive_generation: 0,
+        min_alive_count: 3,
+        min_alive_generation: 0,
+        total_births: 6,
+        total_deaths: 6,
+        iterations_run: 2,
+        status: RunStatus::Cyclic,
+        cycle: Some(CycleStatistics {
+            start_generation: 0,
+            detected_generation: 2,
+            period: 2,
+        }),
+    };
+
+    let ipc = IpcRunStatistics::from(&s);
+
+    assert_eq!(ipc.cycle_start_generation, Some(0));
+    assert_eq!(ipc.cycle_detected_generation, Some(2));
+    assert_eq!(ipc.cycle_period, Some(2));
 }
 
 #[test]
@@ -86,6 +134,14 @@ fn stable_run_status_converts_to_ipc_status() {
     assert_eq!(
         IpcRunStatus::from_core(RunStatus::Stable),
         IpcRunStatus::Stable
+    );
+}
+
+#[test]
+fn cyclic_run_status_converts_to_ipc_status() {
+    assert_eq!(
+        IpcRunStatus::from_core(RunStatus::Cyclic),
+        IpcRunStatus::Cyclic
     );
 }
 

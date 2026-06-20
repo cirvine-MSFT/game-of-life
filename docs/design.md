@@ -136,12 +136,12 @@ The fully alive source is useful for exercising overpopulation behavior, but it 
 
 **Output**:
 - Shows concise run information
-- Advances until the configured maximum iteration count, extinction, or fixed-point stability
+- Advances until the configured maximum iteration count, extinction, fixed-point stability, or an exact repeated board state
 - Prints the final board state only
 - Reports `Stable state reached at generation N` when a no-op attempted generation confirms generation `N` was already fixed-point stable
 - Uses ASCII characters (`#` for alive, `.` for dead) for platform-neutral console output
 
-Stable-state detection deliberately means fixed-point still-life detection, not period-greater-than-1 cycle detection. Oscillators such as blinkers and toads still run to the configured maximum unless they become extinct. A fully dead board is terminal under Conway's B3/S23 rule because births require exactly three live neighbors, so extinction is safe to treat as an early stop.
+Stable-state detection deliberately means fixed-point still-life detection, not period-greater-than-1 cycle detection. Oscillators such as blinkers and toads are reported as `cyclic` when their exact board state repeats. A fully dead board is terminal under Conway's B3/S23 rule because births require exactly three live neighbors, so extinction is safe to treat as an early stop.
 
 **Determinism**: The default demo and blinker patterns are deterministic, ensuring consistent smoke-test output. The `random` source intentionally generates a fresh random board each run; future save/resume work should persist the generated initial state when reproducibility is needed.
 
@@ -165,16 +165,23 @@ src/
   persistence/ - Run record and board snapshot file IO (zero deps)
   stats/       - Per-generation AdvanceOutcome and RunStatistics
 tests/
+  algorithms_tests.rs       - Algorithm initializer and updater behavior
   board_tests.rs            - Board API and Game of Life behavior
   config_tests.rs           - Configuration and parser behavior
   cli_tests.rs              - End-to-end binary behavior for the core run
-  persistence_cli_tests.rs  - End-to-end save/load/replay/extract/continue
+  pattern_analysis_tests.rs - Pattern analyzer behavior
+  persistence_tests.rs      - Wrapper for persistence integration tests
+  persistence/*_tests.rs    - Persistence file format, parser, and CLI flows
+  stats_tests.rs            - Wrapper for statistics integration tests
+  stats/*_tests.rs          - Run statistics behavior
+  streaming_tests.rs        - Wrapper for streaming-board integration tests
+  streaming/*_tests.rs      - File-backed streaming-board behavior
 Cargo.toml     - Project manifest with library and binary targets
 ```
 
 **Libraries Used**: None (no external dependencies for core logic)
 
-**Testing**: Cargo integration tests under `tests/`
+**Testing**: Cargo integration tests under `tests/` with `_tests.rs` filenames
 - Tests cover still-life, oscillators, edge cases, negative parser cases, CLI behavior, and state transitions
 - Grid-based test construction keeps board expectations readable
 - `edge_case_` labels identify valid boundary behavior
@@ -227,16 +234,27 @@ The `[result]` section of every run record also carries `initial_board_hash` and
 
 A `RunStatisticsCollector` observes one `AdvanceOutcome` per generation (births, deaths, alive count) and finalizes into a `RunStatistics` value at end of run. The updater reports `AdvanceOutcome` directly from the normalize pass, so stats are O(1) per generation with no extra full-board scan.
 
-Recorded statistics: `status` (`extinct` / `stable` / `max_iterations`; `cyclic` is reserved for a future cycle-detection follow-up), `iterations_run`, `wall_time_ms`, `initial_alive_count`, `final_alive_count`, `peak_alive_count`, `peak_alive_generation`, `min_alive_count`, `min_alive_generation`, `total_births`, `total_deaths`.
+Recorded statistics: `status` (`extinct` / `stable` / `cyclic` / `max_iterations`), `iterations_run`, `wall_time_ms`, `initial_alive_count`, `final_alive_count`, `peak_alive_count`, `peak_alive_generation`, `min_alive_count`, `min_alive_generation`, `total_births`, `total_deaths`, and optional cycle metadata (`cycle_start_generation`, `cycle_detected_generation`, `cycle_period`) when `status: cyclic`.
 
 ### Early-stop conditions
 
-Two terminal conditions can stop a run before `max_iterations`:
+Three terminal conditions can stop a run before `max_iterations`:
 
 1. **Extinction**: if every cell is dead at generation 0 or after a generation, the run stops with `status: extinct`. A dead board cannot resurrect under B3/S23 because every dead cell has zero live neighbors, not the three required for birth.
 2. **Fixed-point stability**: if an attempted non-extinct generation reports `births == 0` and `deaths == 0`, the run stops with `status: stable`. That no-op attempt is a confirmation, not useful simulation work, so `iterations_run` records the previous generation `N` whose board was confirmed stable. A still-life initial board therefore reports `iterations_run: 0`.
+3. **Exact cycle detection**: in-memory runs retain exact bit-packed board signatures in a per-run pattern analyzer. If generation `M` has the same dimensions and live/dead cell bits as a previously observed generation `N`, the run stops with `status: cyclic`, `iterations_run: M`, and `cycle_period: M - N`. Extinction and fixed-point stability keep priority because they are cheaper and more specific terminal outcomes.
 
-Cycle detection remains deferred. Period-greater-than-1 oscillators and spaceships are not `stable` for this feature because they continue to produce births and deaths between generations. A future pattern-analysis module can own cycle detection and other interesting recurring Game of Life behaviors.
+Streaming-sized runs keep extinction and stability detection but do not retain historical exact signatures yet; doing so could violate the configured memory budget.
+
+### Pattern analysis and board signatures
+
+Pattern analysis is stateful per run/session. A `PatternAnalyzer` owns detector instances and observes generation 0 plus each completed non-terminal generation. The first detector is exact cycle detection; future detectors can report non-terminal notable patterns through the same `PatternMatch` shape without changing the run loop.
+
+The shared `BoardSignature` value is exact, not hash-only: board dimensions, alive-cell count, and row-major bit-packed live/dead cells. In-memory cycle detection stores `BoardSignature -> first_seen_generation` in a hash map, but equality still compares the full signature before reporting a cycle. This avoids false positives while keeping expected lookup O(1).
+
+Exact in-memory cycle detection retains one signature per observed generation. `--max-board-memory` controls whether the active board stays in memory or promotes to streaming storage; it does not cap retained pattern-analysis history. Users running large in-memory boards for very high iteration counts should account for memory proportional to `board size x observed generations`, or use streaming mode when exact cycle history is less important than memory bounds.
+
+Signature construction is fused with existing board passes where possible. Generation advancement can return a `GenerationSummary` containing both the existing `AdvanceOutcome` and the post-generation signature built during normalization. Callers that explicitly need a signature outside the hot path can request one through the board signature interface, which may scan the board when no precomputed signature is available.
 
 ### CLI surface
 
@@ -247,6 +265,8 @@ Cycle detection remains deferred. Period-greater-than-1 oscillators and spaceshi
 - `--extract-board <PATH> --output <PATH>` — write a snapshot from a run record's `INITIAL` or `FINAL` block.
 - `--ignore-integrity` — opt-in bypass of the `content_hash` check (warns on stderr).
 - `--max-input-file-bytes` — per-invocation override of the input file size guard.
+
+Cycle generation metadata in continuation records is relative to the current run segment, matching `iterations_run`; `cycle_period` is invariant across continuation boundaries.
 
 ### Deferred (future PRs)
 
@@ -465,7 +485,7 @@ Future work should be guided by the customer lens in [../CUSTOMERS.md](../CUSTOM
 2. **Board Sizes**: Make dimensions configurable
 3. **Experiment Configuration**: Record initial state, rules, boundary behavior, update mode, random seed, iteration limit, and software version so findings can be reproduced
 4. **Batch Runs**: Run many simulations across initial states and configuration variables, then aggregate outcomes
-5. **Pattern Analysis**: Detect still lifes, oscillators, periods, spaceships, extinction, and long transients
+5. **Pattern Analysis**: Extend the current exact in-memory cycle detector with named oscillators, spaceships, and long-transient classifiers
 6. **Visualization and Replay**: Provide views that explain board evolution better than console board dumps
 7. **Interactive Mode**: Step through generations interactively
 8. **Performance and Storage**: Profile and optimize for large boards or many independent runs. Consider bit-packing, sparse representations, chunked file-backed storage, and streaming reads/writes when justified.

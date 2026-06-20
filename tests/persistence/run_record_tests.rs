@@ -1,6 +1,6 @@
 //! Unit tests for `game_of_life::persistence::run_record` public API:
 //! write, read, integrity, extract — all driven by struct fixtures rather
-//! than by the CLI (CLI-driven flows live in tests/persistence_cli_tests.rs).
+//! than by the CLI (CLI-driven flows live in tests/persistence/cli_tests.rs).
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -70,6 +70,9 @@ fn fixture_record() -> RunRecord {
             min_alive_generation: 5,
             total_births: 4,
             total_deaths: 6,
+            cycle_start_generation: None,
+            cycle_detected_generation: None,
+            cycle_period: None,
             initial_board_hash: initial_hash,
             final_board_hash: final_hash,
         },
