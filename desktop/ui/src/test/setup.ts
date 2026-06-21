@@ -15,20 +15,24 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 // jsdom exposes canvas elements but not a 2D implementation. Components
 // only need a harmless context for smoke rendering; focused canvas tests
 // replace this stub with call-recording mocks.
-HTMLCanvasElement.prototype.getContext = vi.fn(
-  () =>
-    ({
-      setTransform: vi.fn(),
-      fillRect: vi.fn(),
-      beginPath: vi.fn(),
-      moveTo: vi.fn(),
-      lineTo: vi.fn(),
-      stroke: vi.fn(),
-      fillStyle: "",
-      strokeStyle: "",
-      lineWidth: 1,
-    }) as unknown as CanvasRenderingContext2D,
-) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+const getCanvasContext = vi.fn((contextId: string) => {
+  if (contextId !== "2d") {
+    return null;
+  }
+  return {
+    setTransform: vi.fn(),
+    fillRect: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    stroke: vi.fn(),
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 1,
+  } as unknown as CanvasRenderingContext2D;
+});
+HTMLCanvasElement.prototype.getContext =
+  getCanvasContext as unknown as HTMLCanvasElement["getContext"];
 
 // Stub out Tauri's IPC bridge so component tests can render without a
 // real Tauri runtime. Each command returns a sensible default; tests

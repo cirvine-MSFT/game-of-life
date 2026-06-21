@@ -19,6 +19,7 @@ import {
   FolderOpenRegular,
   PanelRightContractRegular,
   PanelRightExpandRegular,
+  SaveRegular,
   SettingsRegular,
 } from "@fluentui/react-icons";
 
@@ -86,6 +87,18 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: tokens.spacingVerticalS,
   },
+  actionRow: {
+    display: "flex",
+    gap: tokens.spacingHorizontalS,
+    flexWrap: "wrap",
+  },
+  metadata: {
+    display: "flex",
+    flexDirection: "column",
+    gap: tokens.spacingVerticalXS,
+    color: tokens.colorNeutralForeground2,
+    overflowWrap: "anywhere",
+  },
 });
 
 const isToolsTab = (value: unknown): value is ToolsTab =>
@@ -139,15 +152,56 @@ const SettingsPanel = () => {
   );
 };
 
+const FilesPanel = () => {
+  const styles = useStyles();
+  const session = useStore((s) => s.session);
+  const loadBoardSnapshot = useStore((s) => s.loadBoardSnapshot);
+  const loadRunBoard = useStore((s) => s.loadRunBoard);
+  const saveBoardSnapshot = useStore((s) => s.saveBoardSnapshot);
+
+  return (
+    <section className={styles.placeholder} aria-label="Files panel">
+      <Subtitle2>Files</Subtitle2>
+      <Body1>
+        Load and save editable .gol board snapshots, or import the initial/final board from
+        a saved run. Loaded files restore a board into Setup mode at iteration 0 so it can be
+        replayed or adjusted.
+      </Body1>
+      <div className={styles.actionRow}>
+        <Button icon={<FolderOpenRegular />} onClick={() => void loadBoardSnapshot()}>
+          Load board snapshot
+        </Button>
+        <Button icon={<FolderOpenRegular />} onClick={() => void loadRunBoard("initial")}>
+          Load run initial
+        </Button>
+        <Button icon={<FolderOpenRegular />} onClick={() => void loadRunBoard("final")}>
+          Load run final
+        </Button>
+        <Button
+          icon={<SaveRegular />}
+          disabled={!session || session.width === 0}
+          onClick={() => void saveBoardSnapshot()}
+        >
+          Save board snapshot
+        </Button>
+      </div>
+      <Divider />
+      <div className={styles.metadata} aria-label="Current board file status">
+        <Caption1>
+          Board: {session && session.width > 0 ? `${session.width}x${session.height}` : "None"}
+        </Caption1>
+        <Caption1>Iteration: {session ? session.iteration : 0}</Caption1>
+        <Caption1>{session?.dirty ? "Unsaved changes" : "No unsaved changes"}</Caption1>
+        <Caption1>{session?.savePath ? `Path: ${session.savePath}` : "Path: Unsaved"}</Caption1>
+      </div>
+    </section>
+  );
+};
+
 const PanelContent = ({ selectedTab }: { selectedTab: ToolsTab }) => {
   switch (selectedTab) {
     case "files":
-      return (
-        <PlaceholderSection title="Files">
-          Load, save, and pattern-library actions will live here. The current board snapshot save action
-          remains available from the playback toolbar while this navigation surface is established.
-        </PlaceholderSection>
-      );
+      return <FilesPanel />;
     case "copilot":
       return (
         <PlaceholderSection title="Copilot">

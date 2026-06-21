@@ -42,6 +42,13 @@ describe("App", () => {
     expect(screen.queryByLabelText("Collapse stats panel")).not.toBeInTheDocument();
   });
 
+  it("keeps file actions out of the primary playback toolbar", () => {
+    render(<App />);
+
+    expect(screen.queryByRole("button", { name: /Load board/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save board/i })).not.toBeInTheDocument();
+  });
+
   it("collapses to a stable tools rail with a non-playback trigger", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -61,5 +68,20 @@ describe("App", () => {
 
     expect(screen.getByRole("radio", { name: "Dark" })).toBeChecked();
     expect(useStore.getState().theme).toBe("dark");
+  });
+
+  it("shows load and save workflow details in the files tab", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: /Files/i }));
+
+    expect(screen.getByRole("region", { name: "Files panel" })).toBeInTheDocument();
+    expect(screen.getByText(/replayed or adjusted/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Load board snapshot" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Load run initial" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Load run final" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save board snapshot" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Current board file status")).toBeInTheDocument();
   });
 });
