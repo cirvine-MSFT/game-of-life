@@ -2,6 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BoardTick, SessionInfo } from "../ipc";
 
+const dialog = vi.hoisted(() => ({
+  open: vi.fn(),
+  save: vi.fn(),
+  ask: vi.fn(),
+  message: vi.fn(),
+}));
+
 // We mock the entire IPC module so the store can be exercised without a
 // Tauri runtime. The setup file already mocks @tauri-apps/api/core +
 // /event, but we need finer control here.
@@ -33,6 +40,8 @@ vi.mock("../ipc", async () => {
     jumpTo: vi.fn(async () => undefined),
     extendMaxIterations: vi.fn(async () => undefined),
     editBoard: vi.fn(async () => undefined),
+    loadBoardSnapshot: vi.fn(async () => "/tmp/loaded.gol"),
+    loadRunBoard: vi.fn(async () => "/tmp/run.gol"),
     saveBoardSnapshot: vi.fn(async () => "/tmp/test.gol"),
     defaultSaveDir: vi.fn(async () => "/tmp"),
     onBoardTick: vi.fn(async () => () => undefined),
@@ -41,6 +50,8 @@ vi.mock("../ipc", async () => {
     onSessionChanged: vi.fn(async () => () => undefined),
   };
 });
+
+vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 
 import * as ipc from "../ipc";
 import { useStore } from "./store";
@@ -90,6 +101,10 @@ const resetStore = () => {
 beforeEach(() => {
   resetStore();
   vi.clearAllMocks();
+  dialog.open.mockResolvedValue(null);
+  dialog.save.mockResolvedValue(null);
+  dialog.ask.mockResolvedValue(true);
+  dialog.message.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -284,6 +299,207 @@ describe("newRun()", () => {
     expect(useStore.getState().latestTick).toBeNull();
     expect(useStore.getState().finalStats).toBeNull();
     expect(useStore.getState().jumpProgress).toBeNull();
+  });
+});
+
+describe("loadBoardSnapshot()", () => {
+  it("loads a selected snapshot and refreshes session state", async () => {
+    dialog.open.mockResolvedValueOnce("/tmp/loaded.gol");
+    vi.mocked(ipc.getSession).mockResolvedValue(populatedSession);
+    useStore.setState({
+      session: populatedSession,
+      history: [1, 2],
+      latestTick: { iteration: 2, alive: 3, dead: 6, births: 1, deaths: 0 },
+      finalStats: {
+        initialAliveCount: 1,
+        finalAliveCount: 3,
+        peakAliveCount: 3,
+        peakAliveGeneration: 2,
+        minAliveCount: 1,
+        minAliveGeneration: 0,
+        totalBirths: 2,
+        totalDeaths: 0,
+        iterationsRun: 2,
+        status: "maxIterations",
+      },
+      jumpProgress: { current: 2, target: 10 },
+    });
+
+    await useStore.getState().loadBoardSnapshot();
+
+    expect(dialog.open).toHaveBeenCalledWith({
+      title: "Load board snapshot or run",
+      multiple: false,
+      filters: [{ name: "Game of Life file", extensions: ["gol"] }],
+    });
+    expect(ipc.loadBoardSnapshot).toHaveBeenCalledWith("/tmp/loaded.gol");
+    expect(ipc.getSession).toHaveBeenCalled();
+    expect(ipc.getBoard).toHaveBeenCalled();
+    expect(ipc.getAliveHistory).toHaveBeenCalled();
+    expect(useStore.getState().latestTick).toBeNull();
+    expect(useStore.getState().finalStats).toBeNull();
+    expect(useStore.getState().jumpProgress).toBeNull();
+  });
+
+  it("does nothing when the file picker is cancelled", async () => {
+    useStore.setState({ session: populatedSession });
+
+    await useStore.getState().loadBoardSnapshot();
+
+    expect(ipc.loadBoardSnapshot).not.toHaveBeenCalled();
+    expect(ipc.getBoard).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when dirty-board discard is cancelled", async () => {
+    dialog.ask.mockResolvedValueOnce(false);
+    useStore.setState({ session: { ...populatedSession, dirty: true } });
+
+    await useStore.getState().loadBoardSnapshot();
+
+    expect(dialog.ask).toHaveBeenCalled();
+    expect(dialog.open).not.toHaveBeenCalled();
+    expect(ipc.loadBoardSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("shows invalid file errors without refreshing state", async () => {
+    dialog.open.mockResolvedValueOnce("/tmp/bad.gol");
+    vi.mocked(ipc.loadBoardSnapshot).mockRejectedValueOnce({
+      kind: "loadBoardSnapshot",
+      message: "Board grid contains unknown character",
+    });
+    useStore.setState({ session: populatedSession });
+
+    await useStore.getState().loadBoardSnapshot();
+
+    expect(dialog.message).toHaveBeenCalledWith("Board grid contains unknown character", {
+      title: "Unable to load board",
+      kind: "error",
+    });
+    expect(ipc.getSession).not.toHaveBeenCalled();
+    expect(ipc.getBoard).not.toHaveBeenCalled();
+  });
+});
+
+describe("loadRunBoard()", () => {
+  it("loads the selected board from a run record", async () => {
+    dialog.open.mockResolvedValueOnce("/tmp/run.gol");
+    vi.mocked(ipc.getSession).mockResolvedValue(populatedSession);
+    useStore.setState({
+      session: populatedSession,
+      history: [1, 2],
+      latestTick: { iteration: 2, alive: 3, dead: 6, births: 1, deaths: 0 },
+      finalStats: {
+        initialAliveCount: 1,
+        finalAliveCount: 3,
+        peakAliveCount: 3,
+        peakAliveGeneration: 2,
+        minAliveCount: 1,
+        minAliveGeneration: 0,
+        totalBirths: 2,
+        totalDeaths: 0,
+        iterationsRun: 2,
+        status: "maxIterations",
+      },
+      jumpProgress: { current: 2, target: 10 },
+    });
+
+    await useStore.getState().loadRunBoard("final");
+
+    expect(dialog.open).toHaveBeenCalledWith({
+      title: "Load final board from run",
+      multiple: false,
+      filters: [{ name: "Game of Life run", extensions: ["gol"] }],
+    });
+    expect(ipc.loadRunBoard).toHaveBeenCalledWith("/tmp/run.gol", "final");
+    expect(ipc.getSession).toHaveBeenCalled();
+    expect(ipc.getBoard).toHaveBeenCalled();
+    expect(ipc.getAliveHistory).toHaveBeenCalled();
+    expect(useStore.getState().latestTick).toBeNull();
+    expect(useStore.getState().finalStats).toBeNull();
+    expect(useStore.getState().jumpProgress).toBeNull();
+  });
+
+  it("shows run load errors without refreshing state", async () => {
+    dialog.open.mockResolvedValueOnce("/tmp/bad-run.gol");
+    vi.mocked(ipc.loadRunBoard).mockRejectedValueOnce({
+      kind: "loadRunRecord",
+      message: "Selected file is not a valid Game of Life run record",
+    });
+    useStore.setState({ session: populatedSession });
+
+    await useStore.getState().loadRunBoard("initial");
+
+    expect(dialog.message).toHaveBeenCalledWith(
+      "Selected file is not a valid Game of Life run record",
+      {
+        title: "Unable to load run",
+        kind: "error",
+      },
+    );
+    expect(ipc.getSession).not.toHaveBeenCalled();
+    expect(ipc.getBoard).not.toHaveBeenCalled();
+  });
+});
+
+describe("saveBoardSnapshot()", () => {
+  it("defaults to the current save path when one exists", async () => {
+    dialog.save.mockResolvedValueOnce(null);
+    useStore.setState({
+      session: { ...populatedSession, savePath: "/tmp/current.gol" },
+    });
+
+    await useStore.getState().saveBoardSnapshot();
+
+    expect(dialog.save).toHaveBeenCalledWith({
+      title: "Save board snapshot",
+      defaultPath: "/tmp/current.gol",
+      filters: [{ name: "Game of Life board", extensions: ["gol"] }],
+    });
+    expect(ipc.defaultSaveDir).not.toHaveBeenCalled();
+    expect(ipc.saveBoardSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("shows non-overwrite save errors", async () => {
+    dialog.save.mockResolvedValueOnce("/tmp/current.gol");
+    vi.mocked(ipc.saveBoardSnapshot).mockRejectedValueOnce({
+      kind: "saveBoardSnapshot",
+      message: "disk full",
+    });
+    useStore.setState({ session: populatedSession });
+
+    await useStore.getState().saveBoardSnapshot();
+
+    expect(dialog.message).toHaveBeenCalledWith("disk full", {
+      title: "Unable to save board",
+      kind: "error",
+    });
+    expect(ipc.getSession).not.toHaveBeenCalled();
+  });
+
+  it("shows overwrite retry save errors", async () => {
+    dialog.save.mockResolvedValueOnce("/tmp/current.gol");
+    vi.mocked(ipc.saveBoardSnapshot)
+      .mockRejectedValueOnce({
+        kind: "saveBoardSnapshot",
+        message: "refusing to overwrite existing file",
+      })
+      .mockRejectedValueOnce({
+        kind: "saveBoardSnapshot",
+        message: "permission denied",
+      });
+    useStore.setState({ session: populatedSession });
+
+    await useStore.getState().saveBoardSnapshot();
+
+    expect(dialog.ask).toHaveBeenCalledWith(
+      "/tmp/current.gol already exists. Overwrite?",
+      { title: "Overwrite file?", kind: "warning" },
+    );
+    expect(dialog.message).toHaveBeenCalledWith("permission denied", {
+      title: "Unable to save board",
+      kind: "error",
+    });
+    expect(ipc.getSession).not.toHaveBeenCalled();
   });
 });
 

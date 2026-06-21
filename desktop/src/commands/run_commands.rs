@@ -105,13 +105,13 @@ pub async fn play(
     session: State<'_, Arc<RunSession>>,
     gps: u16,
 ) -> Result<(), SessionError> {
-    session.begin_playing()?;
+    let worker_generation = session.begin_playing()?;
     let _ = app.emit(SESSION_CHANGED, session.info());
 
     let cloned = session.inner().clone();
     let app_for_task = app.clone();
     tokio::spawn(async move {
-        run_play_loop(app_for_task, cloned, clamp_gps(gps)).await;
+        run_play_loop(app_for_task, cloned, clamp_gps(gps), worker_generation).await;
     });
     Ok(())
 }
@@ -134,33 +134,41 @@ pub async fn jump_to(
         // subsequent `begin_jumping` succeeds.
         session.restart()?;
     }
-    session.begin_jumping(target_iteration)?;
+    let worker_generation = session.begin_jumping(target_iteration)?;
     let _ = app.emit(SESSION_CHANGED, session.info());
 
     let cloned = session.inner().clone();
     let app_for_task = app.clone();
     tokio::spawn(async move {
-        run_jump_loop(app_for_task, cloned, target_iteration).await;
+        run_jump_loop(app_for_task, cloned, target_iteration, worker_generation).await;
     });
     Ok(())
 }
 
-async fn run_play_loop(app: AppHandle, session: Arc<RunSession>, gps: u16) {
+async fn run_play_loop(app: AppHandle, session: Arc<RunSession>, gps: u16, worker_generation: u64) {
     let period = Duration::from_micros(1_000_000 / gps as u64);
     let mut next_tick = Instant::now();
     loop {
-        if session.cancel_requested() {
+        if session.worker_should_stop(worker_generation) {
             break;
         }
-        let tick = match session.advance_one() {
+        let tick = match session.advance_one_for_worker(worker_generation) {
             Ok(tick) => tick,
             Err(_completed) => break,
         };
-        let board = session.board_payload();
+        let Some(board) = session.board_payload_for_worker(worker_generation) else {
+            break;
+        };
+        if !session.worker_is_current(worker_generation) {
+            break;
+        }
         let _ = app.emit(BOARD_TICK, BoardTick { stats: tick, board });
 
+        if !session.worker_is_current(worker_generation) {
+            break;
+        }
         if session.info().completed {
-            emit_completion_if_done(&app, &session);
+            emit_completion_if_done_for_worker(&app, &session, worker_generation);
             break;
         }
 
@@ -176,24 +184,37 @@ async fn run_play_loop(app: AppHandle, session: Arc<RunSession>, gps: u16) {
         }
     }
 
-    session.clear_cancel();
-    session.set_mode(Mode::Paused);
+    session.finish_worker(worker_generation);
     let _ = app.emit(SESSION_CHANGED, session.info());
 }
 
-async fn run_jump_loop(app: AppHandle, session: Arc<RunSession>, target: u64) {
+async fn run_jump_loop(
+    app: AppHandle,
+    session: Arc<RunSession>,
+    target: u64,
+    worker_generation: u64,
+) {
     let mut last_progress = Instant::now();
     let mut last_emitted: Option<crate::ipc_types::AdvanceTick> = None;
+    let mut stale_generation = false;
     loop {
         let current = session.info().iteration;
         if current >= target {
             break;
         }
-        if session.cancel_requested() {
+        if !session.worker_is_current(worker_generation) {
+            stale_generation = true;
             break;
         }
-        let tick = match session.advance_one() {
+        if session.worker_should_stop(worker_generation) {
+            break;
+        }
+        let tick = match session.advance_one_for_worker(worker_generation) {
             Ok(t) => t,
+            Err(SessionError::WorkerStopped) => {
+                stale_generation = true;
+                break;
+            }
             Err(_) => break,
         };
         last_emitted = Some(tick);
@@ -216,16 +237,25 @@ async fn run_jump_loop(app: AppHandle, session: Arc<RunSession>, target: u64) {
     // the canvas a chance to re-render the post-jump board even when
     // we threw the last in-loop tick away (only progress events were
     // emitted at high jump rates). Skip if we never advanced.
-    if let Some(stats) = last_emitted {
-        let board = session.board_payload();
-        let _ = app.emit(BOARD_TICK, BoardTick { stats, board });
+    if !stale_generation {
+        if let Some(stats) = last_emitted {
+            if let Some(board) = session.board_payload_for_worker(worker_generation) {
+                if session.worker_is_current(worker_generation) {
+                    let _ = app.emit(BOARD_TICK, BoardTick { stats, board });
+                } else {
+                    stale_generation = true;
+                }
+            } else {
+                stale_generation = true;
+            }
+        }
     }
 
-    emit_completion_if_done(&app, &session);
+    if !stale_generation {
+        emit_completion_if_done_for_worker(&app, &session, worker_generation);
+    }
 
-    session.clear_cancel();
-    session.set_jump_target(None);
-    session.set_mode(Mode::Paused);
+    session.finish_worker(worker_generation);
     let _ = app.emit(SESSION_CHANGED, session.info());
 }
 
@@ -234,7 +264,35 @@ fn emit_completion_if_done(app: &AppHandle, session: &Arc<RunSession>) {
     if !info.completed {
         return;
     }
+
     if let Some(stats) = session.final_stats() {
+        let _ = app.emit(
+            RUN_COMPLETED,
+            RunCompleted {
+                iteration: info.iteration,
+                status: info.status.unwrap_or(IpcRunStatus::MaxIterations),
+                stats,
+            },
+        );
+    }
+}
+
+fn emit_completion_if_done_for_worker(
+    app: &AppHandle,
+    session: &Arc<RunSession>,
+    worker_generation: u64,
+) {
+    if !session.worker_is_current(worker_generation) {
+        return;
+    }
+    let info = session.info();
+    if !session.worker_is_current(worker_generation) || !info.completed {
+        return;
+    }
+    if let Some(stats) = session.final_stats() {
+        if !session.worker_is_current(worker_generation) {
+            return;
+        }
         let _ = app.emit(
             RUN_COMPLETED,
             RunCompleted {

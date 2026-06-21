@@ -87,6 +87,13 @@ pub enum InitialSource {
     Empty,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RunBoardSelection {
+    Initial,
+    Final,
+}
+
 /// Snapshot of cell bytes shipped to the frontend.
 ///
 /// Cells are packed one byte per cell (Dead=0, Alive=1) and base64-encoded

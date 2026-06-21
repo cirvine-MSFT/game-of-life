@@ -19,7 +19,6 @@ import {
   NextRegular,
   PauseRegular,
   PlayRegular,
-  SaveRegular,
 } from "@fluentui/react-icons";
 
 import { useStore } from "../state/store";
@@ -78,7 +77,6 @@ export const PlaybackControls = () => {
   const restart = useStore((s) => s.restart);
   const editBoard = useStore((s) => s.editBoard);
   const jumpTo = useStore((s) => s.jumpTo);
-  const saveBoardSnapshot = useStore((s) => s.saveBoardSnapshot);
   const [gps, setGps] = useState(5);
   const [jumpTarget, setJumpTarget] = useState("");
 
@@ -177,20 +175,6 @@ export const PlaybackControls = () => {
           </Tooltip>
         </>
       )}
-
-      <ToolbarDivider />
-      <Tooltip
-        content="Save the current board as a .gol snapshot (Ctrl+S)"
-        relationship="label"
-      >
-        <ToolbarButton
-          icon={<SaveRegular />}
-          disabled={!session || session.width === 0}
-          onClick={() => void saveBoardSnapshot()}
-        >
-          Save board
-        </ToolbarButton>
-      </Tooltip>
 
       <ToolbarDivider />
       <Field label={`Speed ${gps} gps`} className={styles.speedSlider}>
