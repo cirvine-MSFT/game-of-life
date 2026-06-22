@@ -12,6 +12,9 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   } as unknown as typeof ResizeObserver;
 }
 
+// jsdom exposes canvas elements but not a 2D implementation. Components
+// only need a harmless context for smoke rendering; focused canvas tests
+// replace this stub with call-recording mocks.
 const getCanvasContext = vi.fn((contextId: string) => {
   if (contextId !== "2d") {
     return null;
