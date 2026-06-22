@@ -53,6 +53,7 @@ export const BoardCanvas = ({ paletteName }: BoardCanvasProps) => {
   const dragRef = useRef<DragState | null>(null);
   const previousRenderRef = useRef<RenderedBoard | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const renderBoardRef = useRef<(animateTransitions: boolean) => void>(() => undefined);
   const board = useStore((s) => s.board);
   const latestTick = useStore((s) => s.latestTick);
   const sessionMode = useStore((s) => s.session?.mode ?? "setup");
@@ -128,6 +129,7 @@ export const BoardCanvas = ({ paletteName }: BoardCanvasProps) => {
     },
     [board, cancelAnimation, latestTick, palette],
   );
+  renderBoardRef.current = renderBoard;
 
   useEffect(() => {
     if (!board) {
@@ -142,15 +144,29 @@ export const BoardCanvas = ({ paletteName }: BoardCanvasProps) => {
   // Redraw on container resize so the cells scale to fill the available
   // space without distorting.
   useEffect(() => {
-    if (!containerRef.current) {
+    const container = containerRef.current;
+    if (!container) {
       return;
     }
+    let lastWidth = container.clientWidth;
+    let lastHeight = container.clientHeight;
     const observer = new ResizeObserver(() => {
-      renderBoard(false);
+      const current = containerRef.current;
+      if (!current) {
+        return;
+      }
+      const nextWidth = current.clientWidth;
+      const nextHeight = current.clientHeight;
+      if (nextWidth === lastWidth && nextHeight === lastHeight) {
+        return;
+      }
+      lastWidth = nextWidth;
+      lastHeight = nextHeight;
+      renderBoardRef.current(false);
     });
-    observer.observe(containerRef.current);
+    observer.observe(container);
     return () => observer.disconnect();
-  }, [renderBoard]);
+  }, []);
 
   const editable = sessionMode === "setup";
 

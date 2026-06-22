@@ -6,6 +6,8 @@ import { useStore } from "../../src/state/store";
 import { lightPalette } from "../../src/theme";
 import { BoardCanvas } from "../../src/components/BoardCanvas";
 
+const defaultResizeObserver = globalThis.ResizeObserver;
+
 interface FillCall {
   style: string;
   rect: [number, number, number, number];
@@ -94,6 +96,30 @@ const installCanvasMock = () => {
   return fills;
 };
 
+const installImmediateResizeObserver = () => {
+  class ImmediateResizeObserver {
+    callback: ResizeObserverCallback;
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+
+    observe() {
+      this.callback([], this as unknown as ResizeObserver);
+    }
+
+    unobserve() {}
+
+    disconnect() {}
+  }
+
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    writable: true,
+    value: ImmediateResizeObserver,
+  });
+};
+
 beforeEach(() => {
   resetStore();
   vi.clearAllMocks();
@@ -120,6 +146,11 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetStore();
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    writable: true,
+    value: defaultResizeObserver,
+  });
   vi.restoreAllMocks();
 });
 
@@ -160,5 +191,23 @@ describe("BoardCanvas transition animation", () => {
 
     expect(fills.some((call) => call.style === lightPalette.resurrecting)).toBe(false);
     expect(fills.some((call) => call.style === lightPalette.dying)).toBe(false);
+  });
+
+  it("does not cancel transition animation for ResizeObserver initial callbacks", () => {
+    installImmediateResizeObserver();
+    installCanvasMock();
+    setBoard(0, verticalBlinker);
+
+    render(<BoardCanvas paletteName="light" />);
+
+    act(() => {
+      useStore.setState({
+        session: { ...baseSession, iteration: 1 },
+        board: { width: 3, height: 3, iteration: 1, cells: horizontalBlinker },
+        latestTick: { iteration: 1, alive: 3, dead: 6, births: 2, deaths: 2 },
+      });
+    });
+
+    expect(window.cancelAnimationFrame).not.toHaveBeenCalled();
   });
 });
