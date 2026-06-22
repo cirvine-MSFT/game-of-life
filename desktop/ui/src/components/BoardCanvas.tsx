@@ -40,7 +40,7 @@ interface RenderedBoard {
   cells: Uint8Array;
 }
 
-const TRANSITION_DURATION_MS = 320;
+const TRANSITION_DURATION_MS = 550;
 
 /**
  * Renders the current board onto a Canvas 2D surface and wires pointer
