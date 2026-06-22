@@ -79,3 +79,7 @@ jobs:
       - name: Console binary smoke test
         shell: bash
         run: ./scripts/smoke-test.sh
+
+      - name: Example boards end-to-end test
+        shell: bash
+        run: ./scripts/examples-smoke-test.sh
