@@ -97,15 +97,18 @@ const installCanvasMock = () => {
 };
 
 const installImmediateResizeObserver = () => {
+  let emitResize: () => void = () => undefined;
+
   class ImmediateResizeObserver {
     callback: ResizeObserverCallback;
 
     constructor(callback: ResizeObserverCallback) {
       this.callback = callback;
+      emitResize = () => this.callback([], this as unknown as ResizeObserver);
     }
 
     observe() {
-      this.callback([], this as unknown as ResizeObserver);
+      emitResize();
     }
 
     unobserve() {}
@@ -118,6 +121,8 @@ const installImmediateResizeObserver = () => {
     writable: true,
     value: ImmediateResizeObserver,
   });
+
+  return emitResize;
 };
 
 beforeEach(() => {
@@ -194,7 +199,7 @@ describe("BoardCanvas transition animation", () => {
   });
 
   it("does not cancel transition animation for ResizeObserver initial callbacks", () => {
-    installImmediateResizeObserver();
+    const emitResize = installImmediateResizeObserver();
     installCanvasMock();
     setBoard(0, verticalBlinker);
 
@@ -207,6 +212,8 @@ describe("BoardCanvas transition animation", () => {
         latestTick: { iteration: 1, alive: 3, dead: 6, births: 2, deaths: 2 },
       });
     });
+
+    emitResize();
 
     expect(window.cancelAnimationFrame).not.toHaveBeenCalled();
   });
