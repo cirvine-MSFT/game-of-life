@@ -137,7 +137,7 @@ describe("App", () => {
       render(<App />);
 
       expect((await screen.findAllByText("Stable")).length).toBeGreaterThan(0);
-      expect(screen.getByText(/Stable at gen 12/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Stable at gen 12/).length).toBeGreaterThan(0);
 
       await user.click(screen.getByRole("tab", { name: /Statistics/i }));
       expect(screen.getByText("Stopped at generation")).toBeInTheDocument();
@@ -151,7 +151,7 @@ describe("App", () => {
       render(<App />);
 
       expect((await screen.findAllByText("Cyclic")).length).toBeGreaterThan(0);
-      expect(screen.getByText(/Cyclic at gen 40 \(period 3\)/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Cyclic at gen 40 \(period 3\)/).length).toBeGreaterThan(0);
     });
 
     it("surfaces an extinct outcome", async () => {
@@ -159,7 +159,7 @@ describe("App", () => {
       render(<App />);
 
       expect((await screen.findAllByText("Extinct")).length).toBeGreaterThan(0);
-      expect(screen.getByText(/Extinct at gen 7/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Extinct at gen 7/).length).toBeGreaterThan(0);
     });
 
     it("surfaces a max-iterations outcome", async () => {
@@ -170,7 +170,7 @@ describe("App", () => {
       render(<App />);
 
       expect((await screen.findAllByText("Reached max")).length).toBeGreaterThan(0);
-      expect(screen.getByText(/Reached max \(100\)/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Reached max \(100\)/).length).toBeGreaterThan(0);
     });
   });
 });

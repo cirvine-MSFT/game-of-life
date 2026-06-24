@@ -5,7 +5,7 @@ import { BoardCanvas } from "./BoardCanvas";
 import { PlaybackControls } from "./PlaybackControls";
 import { ToolsPanel } from "./ToolsPanel";
 import { useStore, type ThemeChoice } from "../state/store";
-import { formatTerminalStatus } from "../state/terminalStatus";
+import { formatTerminalStatusFromSession } from "../state/terminalStatus";
 
 const useStyles = makeStyles({
   root: {
@@ -94,6 +94,13 @@ export const Shell = () => {
     );
   }
 
+  const terminal = session ? formatTerminalStatusFromSession(session, finalStats) : null;
+  const sessionStatusText = session
+    ? `Mode: ${session.mode} \u00b7 ${session.width}\u00d7${session.height} \u00b7 Max iterations: ${session.maxIterations}${
+        terminal ? ` \u00b7 ${terminal.label}` : ""
+      }`
+    : "Connecting\u2026";
+
   return (
     <div className={styles.root}>
       <PlaybackControls />
@@ -104,24 +111,7 @@ export const Shell = () => {
         <ToolsPanel />
       </div>
       <div className={styles.statusBar}>
-        <Caption1>
-          {session
-            ? `Mode: ${session.mode} \u00b7 ${session.width}\u00d7${session.height} \u00b7 Max iterations: ${session.maxIterations}${
-                session.completed && session.status
-                  ? ` \u00b7 ${formatTerminalStatus(
-                      session.status,
-                      finalStats?.iterationsRun ?? session.iteration,
-                      finalStats
-                        ? {
-                            period: finalStats.cyclePeriod ?? null,
-                            startGeneration: finalStats.cycleStartGeneration ?? null,
-                          }
-                        : null,
-                    ).label}`
-                  : ""
-              }`
-            : "Connecting\u2026"}
-        </Caption1>
+        <Caption1>{sessionStatusText}</Caption1>
         <Caption1>
           {session?.savePath ? `Save path: ${session.savePath}` : "Unsaved"}
         </Caption1>

@@ -1,28 +1,15 @@
-// Shared formatter for terminal-state UX across PlaybackControls,
-// StatsPanel, and the status bar. Centralising the copy + Fluent badge
-// colour keeps all three surfaces from drifting apart visually.
+import type { IpcRunStatistics, IpcRunStatus, SessionInfo } from "../ipc";
 
-import type { IpcRunStatus } from "../ipc";
-
-// Fluent <Badge> accepts a fixed set of semantic colours. We only use the
-// four that make sense for these outcomes.
 export type TerminalBadgeColor = "success" | "brand" | "severe" | "warning";
 
 export interface TerminalStatusDescriptor {
-  // Short text suitable for a Badge ("Stable", "Cyclic", ...).
   shortLabel: string;
-  // Full text including the generation it stopped at, suitable for the
-  // status bar / panel labels ("Stable at gen 12").
   label: string;
-  // One-sentence description for tooltips and aria-label.
   description: string;
-  // Fluent <Badge color={...}> value.
   color: TerminalBadgeColor;
 }
 
 export interface TerminalCycleInfo {
-  // Period from `IpcRunStatistics.cyclePeriod`; required to enrich the
-  // "Cyclic" label/description.
   period?: number | null;
   startGeneration?: number | null;
 }
@@ -42,13 +29,15 @@ export const formatTerminalStatus = (
       };
     case "cyclic": {
       const period = cycle?.period ?? null;
+      const startGeneration = cycle?.startGeneration ?? null;
       const periodSuffix = period != null ? ` (period ${period})` : "";
+      const startSuffix = startGeneration != null ? `, first seen at generation ${startGeneration}` : "";
       return {
         shortLabel: "Cyclic",
         label: `Cyclic at gen ${iteration}${periodSuffix}`,
         description:
           period != null
-            ? `Run stopped because the board entered a cycle of period ${period} (detected at generation ${iteration}).`
+            ? `Run stopped because the board entered a cycle of period ${period} (detected at generation ${iteration}${startSuffix}).`
             : `Run stopped because the board entered a cycle (detected at generation ${iteration}).`,
         color: "brand",
       };
@@ -69,3 +58,30 @@ export const formatTerminalStatus = (
       };
   }
 };
+
+export const cycleInfoFromStats = (
+  stats: IpcRunStatistics | null | undefined,
+): TerminalCycleInfo | null =>
+  stats
+    ? {
+        period: stats.cyclePeriod ?? null,
+        startGeneration: stats.cycleStartGeneration ?? null,
+      }
+    : null;
+
+export const formatTerminalStatusFromStats = (
+  stats: IpcRunStatistics,
+): TerminalStatusDescriptor =>
+  formatTerminalStatus(stats.status, stats.iterationsRun, cycleInfoFromStats(stats));
+
+export const formatTerminalStatusFromSession = (
+  session: SessionInfo,
+  finalStats: IpcRunStatistics | null | undefined,
+): TerminalStatusDescriptor | null =>
+  session.completed && session.status
+    ? formatTerminalStatus(
+        session.status,
+        finalStats?.iterationsRun ?? session.iteration,
+        cycleInfoFromStats(finalStats),
+      )
+    : null;

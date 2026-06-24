@@ -22,7 +22,7 @@ import {
 } from "@fluentui/react-icons";
 
 import { useStore } from "../state/store";
-import { formatTerminalStatus } from "../state/terminalStatus";
+import { formatTerminalStatusFromSession } from "../state/terminalStatus";
 
 const useStyles = makeStyles({
   root: {
@@ -98,22 +98,10 @@ export const PlaybackControls = () => {
   const canPause = isPlaying || isJumping;
   const canJump = mode === "paused";
 
-  const terminal =
-    session.completed && session.status
-      ? formatTerminalStatus(
-          session.status,
-          finalStats?.iterationsRun ?? session.iteration,
-          finalStats
-            ? {
-                period: finalStats.cyclePeriod ?? null,
-                startGeneration: finalStats.cycleStartGeneration ?? null,
-              }
-            : null,
-        )
-      : null;
+  const terminal = formatTerminalStatusFromSession(session, finalStats);
 
   const badge = terminal
-    ? { color: terminal.color, label: terminal.shortLabel, description: terminal.description }
+    ? { color: terminal.color, label: terminal.label, description: terminal.description }
     : { ...modeBadge(mode), description: undefined as string | undefined };
 
   const onJump = () => {

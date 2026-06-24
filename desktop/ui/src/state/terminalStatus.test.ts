@@ -1,6 +1,41 @@
 import { describe, expect, it } from "vitest";
 
-import { formatTerminalStatus } from "./terminalStatus";
+import type { IpcRunStatistics, SessionInfo } from "../ipc";
+import {
+  cycleInfoFromStats,
+  formatTerminalStatus,
+  formatTerminalStatusFromSession,
+  formatTerminalStatusFromStats,
+} from "./terminalStatus";
+
+const baseStats: IpcRunStatistics = {
+  initialAliveCount: 3,
+  finalAliveCount: 3,
+  peakAliveCount: 3,
+  peakAliveGeneration: 0,
+  minAliveCount: 3,
+  minAliveGeneration: 0,
+  totalBirths: 0,
+  totalDeaths: 0,
+  iterationsRun: 2,
+  status: "cyclic",
+  cycleStartGeneration: 0,
+  cycleDetectedGeneration: 2,
+  cyclePeriod: 2,
+};
+
+const baseSession: SessionInfo = {
+  mode: "paused",
+  iteration: 2,
+  width: 5,
+  height: 5,
+  maxIterations: 10,
+  savePath: null,
+  dirty: false,
+  completed: true,
+  jumpTarget: null,
+  status: "cyclic",
+};
 
 describe("formatTerminalStatus", () => {
   it("describes a stable fixed-point outcome", () => {
@@ -33,6 +68,7 @@ describe("formatTerminalStatus", () => {
     expect(desc.label).toBe("Cyclic at gen 40 (period 3)");
     expect(desc.color).toBe("brand");
     expect(desc.description).toMatch(/period 3/);
+    expect(desc.description).toMatch(/first seen at generation 37/);
   });
 
   it("falls back gracefully when cycle metadata is missing", () => {
@@ -43,5 +79,36 @@ describe("formatTerminalStatus", () => {
 
   it("handles generation zero (initial still-life)", () => {
     expect(formatTerminalStatus("stable", 0).label).toBe("Stable at gen 0");
+  });
+
+  it("extracts cycle metadata from final stats", () => {
+    expect(cycleInfoFromStats(baseStats)).toEqual({
+      period: 2,
+      startGeneration: 0,
+    });
+    expect(cycleInfoFromStats(null)).toBeNull();
+  });
+
+  it("formats final stats directly", () => {
+    expect(formatTerminalStatusFromStats(baseStats).label).toBe("Cyclic at gen 2 (period 2)");
+  });
+
+  it("formats a completed session with final stats", () => {
+    expect(formatTerminalStatusFromSession(baseSession, baseStats)?.label).toBe(
+      "Cyclic at gen 2 (period 2)",
+    );
+  });
+
+  it("does not format an incomplete session", () => {
+    expect(
+      formatTerminalStatusFromSession(
+        {
+          ...baseSession,
+          completed: false,
+          status: null,
+        },
+        null,
+      ),
+    ).toBeNull();
   });
 });

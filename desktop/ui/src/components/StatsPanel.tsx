@@ -16,7 +16,7 @@ import {
 } from "recharts";
 
 import { useStore } from "../state/store";
-import { formatTerminalStatus } from "../state/terminalStatus";
+import { formatTerminalStatusFromStats } from "../state/terminalStatus";
 
 const useStyles = makeStyles({
   root: {
@@ -77,6 +77,7 @@ export const StatsPanel = () => {
   const dead = latestTick?.dead;
   const births = latestTick?.births ?? 0;
   const deaths = latestTick?.deaths ?? 0;
+  const terminal = finalStats ? formatTerminalStatusFromStats(finalStats) : null;
 
   return (
     <section className={styles.root} aria-label="Statistics panel">
@@ -127,14 +128,7 @@ export const StatsPanel = () => {
           <div className={styles.metricsGrid}>
             <div className={styles.metric}>
               <Caption1>Status</Caption1>
-              <Body1>
-                {
-                  formatTerminalStatus(finalStats.status, finalStats.iterationsRun, {
-                    period: finalStats.cyclePeriod ?? null,
-                    startGeneration: finalStats.cycleStartGeneration ?? null,
-                  }).shortLabel
-                }
-              </Body1>
+              <Body1>{terminal?.shortLabel}</Body1>
             </div>
             <div className={styles.metric}>
               <Caption1>Stopped at generation</Caption1>
