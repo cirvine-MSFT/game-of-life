@@ -99,6 +99,10 @@ describe("formatTerminalStatus", () => {
     );
   });
 
+  it("falls back to session iteration when final stats are not loaded yet", () => {
+    expect(formatTerminalStatusFromSession(baseSession, null)?.label).toBe("Cyclic at gen 2");
+  });
+
   it("does not format an incomplete session", () => {
     expect(
       formatTerminalStatusFromSession(

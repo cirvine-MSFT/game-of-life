@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BoardTick, SessionInfo } from "../ipc";
+import type { BoardTick, IpcRunStatistics, SessionInfo } from "../ipc";
 
 const dialog = vi.hoisted(() => ({
   open: vi.fn(),
@@ -82,6 +82,30 @@ const populatedSession: SessionInfo = {
   status: null,
 };
 
+const completedSession: SessionInfo = {
+  ...populatedSession,
+  mode: "paused",
+  iteration: 12,
+  completed: true,
+  status: "stable",
+};
+
+const completedStats: IpcRunStatistics = {
+  initialAliveCount: 4,
+  finalAliveCount: 4,
+  peakAliveCount: 4,
+  peakAliveGeneration: 0,
+  minAliveCount: 4,
+  minAliveGeneration: 0,
+  totalBirths: 0,
+  totalDeaths: 0,
+  iterationsRun: 12,
+  status: "stable",
+  cycleStartGeneration: null,
+  cycleDetectedGeneration: null,
+  cyclePeriod: null,
+};
+
 const resetStore = () => {
   // Zustand stores are module-singletons; reset between tests so
   // ordering doesn't matter.
@@ -131,6 +155,18 @@ describe("connect()", () => {
     expect(ipc.createRun).not.toHaveBeenCalled();
     expect(ipc.getBoard).toHaveBeenCalledTimes(1);
     expect(ipc.getAliveHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads final stats when reconnecting to a completed session", async () => {
+    vi.mocked(ipc.getSession).mockResolvedValueOnce(completedSession);
+    vi.mocked(ipc.getFinalStats).mockResolvedValueOnce(completedStats);
+
+    await useStore.getState().connect();
+
+    expect(ipc.getBoard).toHaveBeenCalledTimes(1);
+    expect(ipc.getAliveHistory).toHaveBeenCalledTimes(1);
+    expect(ipc.getFinalStats).toHaveBeenCalledTimes(1);
+    expect(useStore.getState().finalStats).toEqual(completedStats);
   });
 
   it("records initError and stays disconnected on getSession failure", async () => {
