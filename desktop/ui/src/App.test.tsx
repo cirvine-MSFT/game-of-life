@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "./App";
 import { useStore } from "./state/store";
+import type { IpcRunStatistics, IpcRunStatus, SessionInfo } from "./ipc";
 
 const resetStore = () => {
   useStore.setState({
@@ -17,6 +18,39 @@ const resetStore = () => {
     initError: null,
   });
 };
+
+const completedSession = (status: IpcRunStatus, iteration: number): SessionInfo => ({
+  mode: "paused",
+  iteration,
+  width: 5,
+  height: 5,
+  maxIterations: 100,
+  savePath: null,
+  dirty: false,
+  completed: true,
+  jumpTarget: null,
+  status,
+});
+
+const completedStats = (
+  status: IpcRunStatus,
+  iterationsRun: number,
+  cycle?: { period: number; start: number; detected: number },
+): IpcRunStatistics => ({
+  initialAliveCount: 0,
+  finalAliveCount: 0,
+  peakAliveCount: 0,
+  peakAliveGeneration: 0,
+  minAliveCount: 0,
+  minAliveGeneration: 0,
+  totalBirths: 0,
+  totalDeaths: 0,
+  iterationsRun,
+  status,
+  cycleStartGeneration: cycle?.start ?? null,
+  cycleDetectedGeneration: cycle?.detected ?? null,
+  cyclePeriod: cycle?.period ?? null,
+});
 
 beforeEach(() => {
   resetStore();
@@ -83,5 +117,60 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Load run final" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save board snapshot" })).toBeInTheDocument();
     expect(screen.getByLabelText("Current board file status")).toBeInTheDocument();
+  });
+
+  describe("terminal-state UX", () => {
+    const seedCompletedSession = (
+      session: SessionInfo,
+      stats: IpcRunStatistics,
+    ) => {
+      useStore.setState({
+        connected: true,
+        session,
+        finalStats: stats,
+      });
+    };
+
+    it("surfaces a stable outcome on the toolbar, status bar, and stats panel", async () => {
+      const user = userEvent.setup();
+      seedCompletedSession(completedSession("stable", 12), completedStats("stable", 12));
+      render(<App />);
+
+      expect((await screen.findAllByText("Stable")).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Stable at gen 12/).length).toBeGreaterThan(0);
+
+      await user.click(screen.getByRole("tab", { name: /Statistics/i }));
+      expect(screen.getByText("Stopped at generation")).toBeInTheDocument();
+    });
+
+    it("surfaces a cyclic outcome with period", async () => {
+      seedCompletedSession(
+        completedSession("cyclic", 40),
+        completedStats("cyclic", 40, { period: 3, start: 37, detected: 40 }),
+      );
+      render(<App />);
+
+      expect((await screen.findAllByText("Cyclic")).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Cyclic at gen 40 \(period 3\)/).length).toBeGreaterThan(0);
+    });
+
+    it("surfaces an extinct outcome", async () => {
+      seedCompletedSession(completedSession("extinct", 7), completedStats("extinct", 7));
+      render(<App />);
+
+      expect((await screen.findAllByText("Extinct")).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Extinct at gen 7/).length).toBeGreaterThan(0);
+    });
+
+    it("surfaces a max-iterations outcome", async () => {
+      seedCompletedSession(
+        completedSession("maxIterations", 100),
+        completedStats("maxIterations", 100),
+      );
+      render(<App />);
+
+      expect((await screen.findAllByText("Reached max")).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Reached max \(100\)/).length).toBeGreaterThan(0);
+    });
   });
 });
