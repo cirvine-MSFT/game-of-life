@@ -5,6 +5,7 @@ import { BoardCanvas } from "./BoardCanvas";
 import { PlaybackControls } from "./PlaybackControls";
 import { ToolsPanel } from "./ToolsPanel";
 import { useStore, type ThemeChoice } from "../state/store";
+import { formatTerminalStatus } from "../state/terminalStatus";
 
 const useStyles = makeStyles({
   root: {
@@ -73,6 +74,7 @@ export const Shell = () => {
   const initError = useStore((s) => s.initError);
   const session = useStore((s) => s.session);
   const theme = useStore((s) => s.theme);
+  const finalStats = useStore((s) => s.finalStats);
 
   useEffect(() => {
     void connect();
@@ -104,7 +106,20 @@ export const Shell = () => {
       <div className={styles.statusBar}>
         <Caption1>
           {session
-            ? `Mode: ${session.mode} \u00b7 ${session.width}\u00d7${session.height} \u00b7 Max iterations: ${session.maxIterations}`
+            ? `Mode: ${session.mode} \u00b7 ${session.width}\u00d7${session.height} \u00b7 Max iterations: ${session.maxIterations}${
+                session.completed && session.status
+                  ? ` \u00b7 ${formatTerminalStatus(
+                      session.status,
+                      finalStats?.iterationsRun ?? session.iteration,
+                      finalStats
+                        ? {
+                            period: finalStats.cyclePeriod ?? null,
+                            startGeneration: finalStats.cycleStartGeneration ?? null,
+                          }
+                        : null,
+                    ).label}`
+                  : ""
+              }`
             : "Connecting\u2026"}
         </Caption1>
         <Caption1>

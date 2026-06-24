@@ -16,6 +16,7 @@ import {
 } from "recharts";
 
 import { useStore } from "../state/store";
+import { formatTerminalStatus } from "../state/terminalStatus";
 
 const useStyles = makeStyles({
   root: {
@@ -126,10 +127,17 @@ export const StatsPanel = () => {
           <div className={styles.metricsGrid}>
             <div className={styles.metric}>
               <Caption1>Status</Caption1>
-              <Body1>{finalStats.status}</Body1>
+              <Body1>
+                {
+                  formatTerminalStatus(finalStats.status, finalStats.iterationsRun, {
+                    period: finalStats.cyclePeriod ?? null,
+                    startGeneration: finalStats.cycleStartGeneration ?? null,
+                  }).shortLabel
+                }
+              </Body1>
             </div>
             <div className={styles.metric}>
-              <Caption1>Iterations</Caption1>
+              <Caption1>Stopped at generation</Caption1>
               <Body1>{finalStats.iterationsRun}</Body1>
             </div>
             <div className={styles.metric}>
