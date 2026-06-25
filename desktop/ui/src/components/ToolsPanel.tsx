@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Body1,
   Button,
@@ -16,6 +16,7 @@ import {
 import {
   BotRegular,
   ChartMultipleRegular,
+  EditRegular,
   FolderOpenRegular,
   PanelRightContractRegular,
   PanelRightExpandRegular,
@@ -24,9 +25,10 @@ import {
 } from "@fluentui/react-icons";
 
 import { useStore, type ThemeChoice } from "../state/store";
+import { SetupPanel } from "./SetupPanel";
 import { StatsPanel } from "./StatsPanel";
 
-type ToolsTab = "statistics" | "files" | "copilot" | "settings";
+type ToolsTab = "setup" | "statistics" | "files" | "copilot" | "settings";
 
 const useStyles = makeStyles({
   root: {
@@ -102,7 +104,11 @@ const useStyles = makeStyles({
 });
 
 const isToolsTab = (value: unknown): value is ToolsTab =>
-  value === "statistics" || value === "files" || value === "copilot" || value === "settings";
+  value === "setup" ||
+  value === "statistics" ||
+  value === "files" ||
+  value === "copilot" ||
+  value === "settings";
 
 const isThemeChoice = (value: string): value is ThemeChoice =>
   value === "light" || value === "dark" || value === "highContrast" || value === "system";
@@ -200,6 +206,8 @@ const FilesPanel = () => {
 
 const PanelContent = ({ selectedTab }: { selectedTab: ToolsTab }) => {
   switch (selectedTab) {
+    case "setup":
+      return <SetupPanel />;
     case "files":
       return <FilesPanel />;
     case "copilot":
@@ -220,7 +228,20 @@ const PanelContent = ({ selectedTab }: { selectedTab: ToolsTab }) => {
 export const ToolsPanel = () => {
   const styles = useStyles();
   const [collapsed, setCollapsed] = useState(false);
-  const [selectedTab, setSelectedTab] = useState<ToolsTab>("statistics");
+  const mode = useStore((s) => s.session?.mode);
+  // Default to the Setup tab while in setup mode so users land directly on
+  // the New Run / pattern controls. We only auto-switch on the first
+  // mode-resolved render so a user who navigates away (e.g. to Statistics)
+  // isn't yanked back every time mode flips.
+  const [selectedTab, setSelectedTab] = useState<ToolsTab>("setup");
+  const [autoTabApplied, setAutoTabApplied] = useState(false);
+  useEffect(() => {
+    if (autoTabApplied || mode === undefined) {
+      return;
+    }
+    setSelectedTab(mode === "setup" ? "setup" : "statistics");
+    setAutoTabApplied(true);
+  }, [autoTabApplied, mode]);
 
   if (collapsed) {
     return (
@@ -264,6 +285,9 @@ export const ToolsPanel = () => {
           }
         }}
       >
+        <Tab value="setup" icon={<EditRegular />}>
+          Setup
+        </Tab>
         <Tab value="statistics" icon={<ChartMultipleRegular />}>
           Statistics
         </Tab>

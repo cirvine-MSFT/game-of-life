@@ -95,6 +95,7 @@ const resetStore = () => {
     theme: "light",
     connected: false,
     initError: null,
+    newRunDialogOpen: false,
   });
 };
 
@@ -299,6 +300,39 @@ describe("newRun()", () => {
     expect(useStore.getState().latestTick).toBeNull();
     expect(useStore.getState().finalStats).toBeNull();
     expect(useStore.getState().jumpProgress).toBeNull();
+  });
+
+  it("propagates a backend error and leaves prior transient state intact", async () => {
+    vi.mocked(ipc.createRun).mockRejectedValueOnce({
+      kind: "zeroDimension",
+      message: "board width and height must be greater than zero",
+    });
+    useStore.setState({
+      history: [1, 2, 3],
+      latestTick: { iteration: 3, alive: 5, dead: 5, births: 1, deaths: 0 },
+    });
+
+    await expect(
+      useStore.getState().newRun({
+        width: 0,
+        height: 10,
+        source: { kind: "empty" },
+        maxIterations: 50,
+      }),
+    ).rejects.toMatchObject({ kind: "zeroDimension" });
+
+    expect(useStore.getState().history).toEqual([1, 2, 3]);
+    expect(useStore.getState().latestTick).not.toBeNull();
+  });
+});
+
+describe("openNewRunDialog() / closeNewRunDialog()", () => {
+  it("toggles the dialog flag", () => {
+    expect(useStore.getState().newRunDialogOpen).toBe(false);
+    useStore.getState().openNewRunDialog();
+    expect(useStore.getState().newRunDialogOpen).toBe(true);
+    useStore.getState().closeNewRunDialog();
+    expect(useStore.getState().newRunDialogOpen).toBe(false);
   });
 });
 

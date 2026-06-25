@@ -16,6 +16,7 @@ import {
 import {
   ArrowResetRegular,
   CursorRegular,
+  DocumentAddRegular,
   NextRegular,
   PauseRegular,
   PlayRegular,
@@ -77,6 +78,7 @@ export const PlaybackControls = () => {
   const restart = useStore((s) => s.restart);
   const editBoard = useStore((s) => s.editBoard);
   const jumpTo = useStore((s) => s.jumpTo);
+  const openNewRunDialog = useStore((s) => s.openNewRunDialog);
   const [gps, setGps] = useState(5);
   const [jumpTarget, setJumpTarget] = useState("");
 
@@ -112,6 +114,15 @@ export const PlaybackControls = () => {
       </Badge>
       <Body1>Iteration {session.iteration}</Body1>
       <ToolbarDivider />
+
+      <Tooltip content="Create a new run (board size, iterations, source)" relationship="label">
+        <ToolbarButton
+          icon={<DocumentAddRegular />}
+          onClick={() => openNewRunDialog()}
+        >
+          New Run…
+        </ToolbarButton>
+      </Tooltip>
 
       {canStart && (
         <Tooltip content="Start the simulation (Space)" relationship="label">
