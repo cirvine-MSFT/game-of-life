@@ -272,6 +272,28 @@ surface, and state-machine details.
 
 ### Build the desktop app locally
 
+The fastest path is the helper scripts in [`scripts/`](scripts/):
+
+```powershell
+# Dev mode (Vite + Tauri together with hot-reload):
+.\scripts\run-desktop.ps1
+
+# Release bundle (NSIS .exe + .msi on Windows):
+.\scripts\build-desktop.ps1
+```
+
+```bash
+# Dev mode on Linux / macOS / WSL:
+./scripts/run-desktop.sh
+
+# Release bundle:
+./scripts/build-desktop.sh
+```
+
+Both scripts install `tauri-cli` (one-time) and `desktop/ui` npm
+dependencies on first use. They wrap the manual workflow below; reach
+for the manual commands if you want finer control.
+
 ```powershell
 # Install the Tauri CLI once.
 cargo install tauri-cli --version "^2.0" --locked
