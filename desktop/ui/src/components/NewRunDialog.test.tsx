@@ -115,6 +115,17 @@ describe("NewRunDialog", () => {
     expect(screen.getByText(/Width must be a whole number/i)).toBeInTheDocument();
   });
 
+  it("rejects invalid max iterations with an inline error and skips IPC", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+
+    await fillNumberInput(user, "Max iterations", "0");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(ipc.createRun).not.toHaveBeenCalled();
+    expect(screen.getByText(/Max iterations must be a whole number/i)).toBeInTheDocument();
+  });
+
   it("shows seed and density inputs only when source is random", async () => {
     const user = userEvent.setup();
     renderDialog();

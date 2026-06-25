@@ -183,7 +183,8 @@ export const SetupPanel = () => {
           </div>
         </Field>
 
-        <Field label="Randomize">
+        <div className={styles.section} aria-label="Randomize controls">
+          <Subtitle2>Randomize</Subtitle2>
           <div className={styles.inlineRow}>
             <Field label="Seed" size="small">
               <Input
@@ -209,11 +210,11 @@ export const SetupPanel = () => {
             icon={<ArrowShuffleRegular />}
             disabled={inPlaceDisabled}
             onClick={onRandomize}
-            style={{ marginTop: tokens.spacingVerticalS, alignSelf: "flex-start" }}
+            style={{ alignSelf: "flex-start" }}
           >
             Randomize
           </Button>
-        </Field>
+        </div>
 
         {actionError && (
           <Caption1 role="alert" style={{ color: tokens.colorPaletteRedForeground1 }}>

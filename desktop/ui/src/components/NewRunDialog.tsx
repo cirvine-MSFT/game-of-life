@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Body1,
   Button,
@@ -22,9 +22,10 @@ import {
 import { useStore } from "../state/store";
 import type { CreateRunArgs, InitialSource, PatternName } from "../ipc";
 
-// The desktop budget allows ~16M cells with default settings; capping at
-// 2048 in each dimension keeps the dialog within sensible single-machine
-// limits and matches the Streaming-Not-Implemented backend guard.
+// Client-side cap kept well under the backend's 64 MiB memory budget so
+// most boards fit without hitting StreamingNotImplemented. The backend
+// is the authoritative guard; this just trims the obvious bad inputs
+// before we round-trip them.
 const MAX_DIMENSION = 2048;
 const MAX_ITERATIONS_CAP = 1_000_000_000;
 const DENSITY_MAX = 1000;
@@ -47,11 +48,6 @@ const useStyles = makeStyles({
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
     gap: tokens.spacingHorizontalM,
-  },
-  column: {
-    display: "flex",
-    flexDirection: "column",
-    gap: tokens.spacingVerticalM,
   },
   section: {
     display: "flex",
@@ -241,7 +237,7 @@ export const NewRunDialog = () => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const dirty = useMemo(() => session?.dirty ?? false, [session]);
+  const dirty = session?.dirty ?? false;
 
   const onCreate = async () => {
     const { args, errors: validation } = validate(form);
