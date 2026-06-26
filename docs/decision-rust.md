@@ -137,10 +137,12 @@ The next implementation phase should keep the core dependency-light, then add te
 When telemetry is added, prefer an incremental approach:
 
 1. Add `tracing` spans/events around generation advancement, board loading, and console/service commands.
-2. Add counters and histograms for generation count, board size, live-cell count, step duration, and memory-relevant dimensions.
+2. Add counters and histograms for generation count, board size, live-cell count, step duration, and memory-relevant dimensions, including actual process memory so `--max-board-memory` claims can be validated in practice.
 3. Export via OpenTelemetry OTLP to an OpenTelemetry Collector.
 4. Add a local container-based observability stack only after the application emits useful telemetry.
 5. Document the local Grafana/collector setup in `docs/`.
+
+The default collection target is **local** (e.g. a collector running on the user's machine or in a local container). Cloud endpoints should be opt-in via configuration so a clone-and-run researcher experience does not depend on any external account or API key.
 
 ## UI direction
 
