@@ -6,14 +6,16 @@ the core algorithm; this file only covers what's specific to the visualizer.
 
 ## Scope
 
-The desktop app is deliberately narrow. It exists for:
+The desktop app is organized around three top-level views, each with a focused job:
 
-- **Visualization** of single runs as they unfold.
-- **Board editing** — create, edit, and save starting boards. This is a first-class function, not a side feature of setup mode.
-- **Single-run stats** while a run is in flight or just after it completes.
-- An **on-box AI-themed skin** (and optionally AI-assisted board generation) powered by Foundry Local with a small open-source model, so the feature works without API keys or accounts.
+### Board view
+Pick a board size, edit cells (click / drag / paint), generate or place patterns, randomize, clear, save the board as a snapshot, load a snapshot from disk. This view is the home of board creation and editing — a first-class function, not a side-effect of run setup.
 
-The desktop app is explicitly **not** for batch execution or cross-run aggregate analysis. Those are served by the CLI (driven from external scripts) and the aggregate analysis tool respectively.
+### Run view
+Load a board (from a file, or from the current Board-view state) and execute it. Play / Pause / Step / Restart / Jump-to-N controls, live single-run stats, mid-run edit, save-snapshot-mid-run, and save-run-record-after-completion. This is the visualization-and-watching surface for one run at a time.
+
+### Aggregate view
+Import or select multiple `.gol` run records and inspect cohort statistics and trajectory graphs: termination mix, iteration distributions, per-generation curves averaged across the cohort, parameter coverage, and outliers. Shares its analysis logic with the library API used by the CLI subcommand for scripted use.
 
 ## Rationale
 

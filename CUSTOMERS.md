@@ -26,8 +26,8 @@ Run analytics (which runs produced which patterns, when cycles emerged, how long
 The work decomposes into four pillars, each owned by a different surface:
 
 1. **CLI** — the workhorse for one-shot and batch runs. Intentionally simple: no built-in swarming or orchestration. Designed to be parallelized by external drivers (PowerShell, Python, shell) across processes and machines.
-2. **Desktop UI** — visualization, board editor, single-run stats, and an AI-themed skin. Not a batch-analysis tool.
-3. **Aggregate analysis** — answers cohort questions across a directory of run records (cycle rate, iteration distribution, board-size uniformity, status mix, parameter coverage).
+2. **Desktop UI** — three top-level views: **Board** (size, edit, generate, save / load snapshots), **Run** (load → visualize → pause / step / mid-run edit → save), and **Aggregate** (import multiple run records, view cohort stats and trajectory graphs). Plus an on-box AI-themed skin and board generation via Foundry Local.
+3. **Aggregate analysis** — answers cohort questions across a directory of run records (cycle rate, iteration distribution, per-generation trajectory curves, board-size uniformity, status mix, parameter coverage). Logic lives in the library; the desktop Aggregate view is the primary surface, with a CLI subcommand for scripted use.
 4. **Performance telemetry** — OpenTelemetry instrumentation in the CLI, collected locally by default so contributors can clone the repo and inspect performance without any cloud account.
 
 ## Secondary customer: educator / demonstrator
