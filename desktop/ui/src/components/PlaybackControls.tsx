@@ -23,6 +23,7 @@ import {
 } from "@fluentui/react-icons";
 
 import { useStore } from "../state/store";
+import { formatTerminalStatusFromSession } from "../state/terminalStatus";
 
 const useStyles = makeStyles({
   root: {
@@ -79,6 +80,7 @@ export const PlaybackControls = () => {
   const editBoard = useStore((s) => s.editBoard);
   const jumpTo = useStore((s) => s.jumpTo);
   const openNewRunDialog = useStore((s) => s.openNewRunDialog);
+  const finalStats = useStore((s) => s.finalStats);
   const [gps, setGps] = useState(5);
   const [jumpTarget, setJumpTarget] = useState("");
 
@@ -98,7 +100,11 @@ export const PlaybackControls = () => {
   const canPause = isPlaying || isJumping;
   const canJump = mode === "paused";
 
-  const badge = modeBadge(mode);
+  const terminal = formatTerminalStatusFromSession(session, finalStats);
+
+  const badge = terminal
+    ? { color: terminal.color, label: terminal.label, description: terminal.description }
+    : { ...modeBadge(mode), description: undefined as string | undefined };
 
   const onJump = () => {
     const target = Number.parseInt(jumpTarget, 10);
@@ -109,7 +115,7 @@ export const PlaybackControls = () => {
 
   return (
     <Toolbar className={styles.root} aria-label="Playback controls">
-      <Badge color={badge.color} appearance="filled">
+      <Badge color={badge.color} appearance="filled" aria-label={badge.description ?? badge.label}>
         {badge.label}
       </Badge>
       <Body1>Iteration {session.iteration}</Body1>

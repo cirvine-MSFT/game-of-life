@@ -172,6 +172,9 @@ export const useStore = create<AppState>((set, get) => ({
       } else {
         await get().refreshBoard();
         await get().refreshHistory();
+        if (session.completed) {
+          await get().refreshFinalStats();
+        }
       }
 
       // Register listeners sequentially so a mid-list failure can still
