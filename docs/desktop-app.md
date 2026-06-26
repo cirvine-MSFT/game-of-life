@@ -4,6 +4,19 @@ This document mirrors [`docs/design.md`](design.md) for the Tauri v2 desktop
 app under [`desktop/`](../desktop/). Read [`design.md`](design.md) first for
 the core algorithm; this file only covers what's specific to the visualizer.
 
+## Scope
+
+The desktop app is organized around three top-level views, each with a focused job:
+
+### Board view
+Pick a board size, edit cells (click / drag / paint), generate or place patterns, randomize, clear, save the board as a snapshot, load a snapshot from disk. This view is the home of board creation and editing — a first-class function, not a side-effect of run setup.
+
+### Run view
+Load a board (from a file, or from the current Board-view state) and execute it. Play / Pause / Step / Restart / Jump-to-N controls, live single-run stats, mid-run edit, save-snapshot-mid-run, and save-run-record-after-completion. This is the visualization-and-watching surface for one run at a time.
+
+### Aggregate view
+Import or select multiple `.gol` run records and inspect cohort statistics and trajectory graphs: termination mix, iteration distributions, per-generation curves averaged across the cohort, parameter coverage, and outliers. Shares its analysis logic with the library API used by the CLI subcommand for scripted use.
+
 ## Rationale
 
 The CLI is optimized for batch runs and replay correctness. A user who

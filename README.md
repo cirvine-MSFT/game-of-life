@@ -14,7 +14,16 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Customer lens
 
-This project is also framed as reproducible simulation software for research, education, and interview discussion. See [CUSTOMERS.md](CUSTOMERS.md) for the personas, customer jobs, and roadmap lens that should guide future feature work.
+This project is framed as reproducible simulation software for research, education, and interview discussion, with the research scientist as the primary persona. See [CUSTOMERS.md](CUSTOMERS.md) for the full personas, jobs, and roadmap lens.
+
+## What's in the box
+
+Four product pillars, deliberately separated so each can stay simple:
+
+1. **CLI** — single- and continuation-run execution, with run records, replay, and snapshots. Parallelized by external drivers (PowerShell / Python), not by built-in swarming.
+2. **Desktop UI** — three top-level views: **Board** (size, edit, generate, save / load snapshots), **Run** (load → visualize → pause / step / mid-run edit → save), and **Aggregate** (import multiple run records, cohort stats and trajectory graphs). Plus an on-box AI-themed skin powered by Foundry Local. Single-machine, single-user; not for headless batch.
+3. **Aggregate analysis** _(planned)_ — read a directory or set of run records and answer cohort questions: termination mix, iteration distribution, per-generation curves, board-size uniformity, parameter coverage. Logic lives in the library; the **desktop Aggregate view** is the primary surface, with a CLI subcommand for scripted use.
+4. **Performance telemetry** _(planned)_ — OpenTelemetry instrumentation in the CLI, local-by-default collection, with per-iteration timing and memory metrics that validate `--max-board-memory` is honored in practice.
 
 ## Current scope
 
