@@ -4,6 +4,17 @@ This document mirrors [`docs/design.md`](design.md) for the Tauri v2 desktop
 app under [`desktop/`](../desktop/). Read [`design.md`](design.md) first for
 the core algorithm; this file only covers what's specific to the visualizer.
 
+## Scope
+
+The desktop app is deliberately narrow. It exists for:
+
+- **Visualization** of single runs as they unfold.
+- **Board editing** — create, edit, and save starting boards. This is a first-class function, not a side feature of setup mode.
+- **Single-run stats** while a run is in flight or just after it completes.
+- An **on-box AI-themed skin** (and optionally AI-assisted board generation) powered by Foundry Local with a small open-source model, so the feature works without API keys or accounts.
+
+The desktop app is explicitly **not** for batch execution or cross-run aggregate analysis. Those are served by the CLI (driven from external scripts) and the aggregate analysis tool respectively.
+
 ## Rationale
 
 The CLI is optimized for batch runs and replay correctness. A user who

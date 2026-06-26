@@ -11,14 +11,24 @@ The primary customer wants controlled, repeatable simulation runs. They are inte
 They value:
 
 - Reproducible run configuration and output.
-- Batch execution and parameter sweeps.
+- Batch execution and parameter sweeps, parallelized across processes or machines.
 - Pattern discovery and classification.
 - Aggregate statistics across many runs.
 - Clear provenance for interesting findings.
 - Deterministic, testable simulation behavior.
 - Performance that is motivated by real experiment scale.
+- Runtime performance and memory telemetry, collected locally, so resource caps such as `--max-board-memory` can be validated in practice rather than only declared.
 
-For this customer, runtime telemetry is not the primary output. Their core need is run analytics: which runs produced which patterns, when cycles emerged, how long transients lasted, aggregate statistics across experiments, and whether another person can reproduce the result. The exact result format is still to be defined, but it should be distinct from application telemetry streams.
+Run analytics (which runs produced which patterns, when cycles emerged, how long transients lasted, aggregate statistics across experiments, whether another person can reproduce the result) and runtime telemetry (per-iteration timing, memory usage against declared budgets) are both first-class outputs for this customer, and should remain distinct streams: run records describe *what the simulation did*, telemetry describes *how the process behaved while doing it*.
+
+## Product pillars
+
+The work decomposes into four pillars, each owned by a different surface:
+
+1. **CLI** — the workhorse for one-shot and batch runs. Intentionally simple: no built-in swarming or orchestration. Designed to be parallelized by external drivers (PowerShell, Python, shell) across processes and machines.
+2. **Desktop UI** — visualization, board editor, single-run stats, and an AI-themed skin. Not a batch-analysis tool.
+3. **Aggregate analysis** — answers cohort questions across a directory of run records (cycle rate, iteration distribution, board-size uniformity, status mix, parameter coverage).
+4. **Performance telemetry** — OpenTelemetry instrumentation in the CLI, collected locally by default so contributors can clone the repo and inspect performance without any cloud account.
 
 ## Secondary customer: educator / demonstrator
 
@@ -29,10 +39,8 @@ They value:
 - Named patterns such as still lifes, oscillators, gliders, and spaceships.
 - Step-through, replay, or timelapse views.
 - Visualization that is easier to understand than console board dumps.
-- Runtime telemetry that explains operations, timing, memory-relevant dimensions, and algorithm tradeoffs.
 - Examples that connect implementation choices to observable behavior.
-
-For this customer, runtime telemetry can be a teaching tool. OpenTelemetry-style events, logs, metrics, or dashboards can help show how changing board size, algorithm, topology, or data representation affects application behavior.
+- The same runtime telemetry the researcher uses, repurposed as a teaching tool to show how changing board size, algorithm, topology, or data representation affects application behavior.
 
 ## Secondary customer: interviewer / evaluator
 
@@ -110,9 +118,11 @@ When planning features, prefer work that moves the project toward:
 - Simulation summaries: live-cell counts, extinction generation, final classification, transient length, detected period, and pattern occurrences.
 - Batch execution for parameter sweeps.
 - Stable-state and cycle detection.
-- Parallel or multi-process execution for independent runs.
-- Visualization and replay for recorded simulations.
-- Telemetry and profiling that explain algorithm behavior.
+- Parallel or multi-process execution for independent runs, driven from external scripts rather than CLI-internal orchestration.
+- Visualization and replay for recorded simulations, plus an in-app board editor for crafting starting states.
+- Aggregate analysis over a directory of saved run records.
+- OpenTelemetry instrumentation in the CLI, with local-by-default collection, so per-iteration performance and memory-cap honoring are observable without external accounts.
+- An on-box AI experience for the desktop UI (e.g. themed skins, optional board generation) using Foundry Local with a small open-source model, so the feature works for anyone who clones the repo without managing API keys.
 - Documentation artifacts that explain product framing and design tradeoffs.
 
 ## How to update this file
