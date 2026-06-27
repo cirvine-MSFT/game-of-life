@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { Body1, Button, Caption1, makeStyles, tokens } from "@fluentui/react-components";
 
 import { BoardCanvas } from "./BoardCanvas";
-import { NewRunDialog } from "./NewRunDialog";
 import { PlaybackControls } from "./PlaybackControls";
 import { ToolsPanel } from "./ToolsPanel";
 import { useStore, type ThemeChoice } from "../state/store";
@@ -117,7 +116,6 @@ export const Shell = () => {
           {session?.savePath ? `Save path: ${session.savePath}` : "Unsaved"}
         </Caption1>
       </div>
-      <NewRunDialog />
     </div>
   );
 };

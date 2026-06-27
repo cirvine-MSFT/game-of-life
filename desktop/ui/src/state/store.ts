@@ -72,7 +72,6 @@ interface AppState {
   theme: ThemeChoice;
   connected: boolean;
   initError: string | null;
-  newRunDialogOpen: boolean;
 
   // Lifecycle
   connect: () => Promise<void>;
@@ -80,10 +79,6 @@ interface AppState {
   refreshBoard: () => Promise<void>;
   refreshHistory: () => Promise<void>;
   refreshFinalStats: () => Promise<void>;
-
-  // New Run dialog
-  openNewRunDialog: () => void;
-  closeNewRunDialog: () => void;
 
   // Setup actions
   newRun: (args: CreateRunArgs) => Promise<void>;
@@ -149,7 +144,6 @@ export const useStore = create<AppState>((set, get) => ({
   theme: "light",
   connected: false,
   initError: null,
-  newRunDialogOpen: false,
 
   connect: async () => {
     if (get().connected) {
@@ -338,14 +332,6 @@ export const useStore = create<AppState>((set, get) => ({
 
   setTheme: (theme) => {
     set({ theme });
-  },
-
-  openNewRunDialog: () => {
-    set({ newRunDialogOpen: true });
-  },
-
-  closeNewRunDialog: () => {
-    set({ newRunDialogOpen: false });
   },
 
   loadBoardSnapshot: async () => {
