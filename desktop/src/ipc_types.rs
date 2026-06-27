@@ -82,6 +82,7 @@ pub enum InitialSource {
     Pattern(PatternName),
     Random {
         seed: u64,
+        #[serde(rename = "aliveCellsPerThousand")]
         alive_cells_per_thousand: u16,
     },
     Empty,

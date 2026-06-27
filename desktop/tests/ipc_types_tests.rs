@@ -177,6 +177,21 @@ fn initial_source_serialises_with_tag_and_value() {
     .unwrap();
     assert!(json.contains("\"kind\":\"random\""), "got: {json}");
     assert!(json.contains("\"seed\":17"), "got: {json}");
+    assert!(
+        json.contains("\"aliveCellsPerThousand\":400"),
+        "expected camelCase aliveCellsPerThousand field for frontend IPC, got: {json}"
+    );
+
+    // Round-trips back from the camelCase JSON the frontend actually sends.
+    let from_frontend = r#"{"kind":"random","value":{"seed":17,"aliveCellsPerThousand":400}}"#;
+    let decoded: InitialSource = serde_json::from_str(from_frontend).unwrap();
+    assert_eq!(
+        decoded,
+        InitialSource::Random {
+            seed: 17,
+            alive_cells_per_thousand: 400,
+        }
+    );
 }
 
 #[test]
