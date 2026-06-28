@@ -15,7 +15,7 @@
   "dependencies": {
     "@fluentui/react-components": "^9.55.0",
     "@fluentui/react-icons": "^2.0.262",
-    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-fs": "^2.2.0",
     "@tauri-apps/plugin-log": "^2.2.0",
