@@ -237,4 +237,62 @@ describe("RunPane", () => {
     expect(ipc.loadRunBoard).not.toHaveBeenCalled();
     expect(useStore.getState().loadedReference).toBeNull();
   });
+
+  describe("Max iterations field", () => {
+    it("calls extendMaxIterations when Apply is clicked with a new value", async () => {
+      const user = userEvent.setup();
+      resetStore(baseSession);
+      const extendMaxIterations = vi.fn().mockResolvedValue(undefined);
+      useStore.setState({ extendMaxIterations });
+
+      render(<RunPane />);
+
+      const input = screen.getByLabelText("Max iterations");
+      await user.clear(input);
+      await user.type(input, "250");
+      await user.click(screen.getByRole("button", { name: "Apply" }));
+
+      expect(extendMaxIterations).toHaveBeenCalledWith(250);
+    });
+
+    it("disables Apply when the input matches the current max", () => {
+      resetStore({ ...baseSession, maxIterations: 100 });
+      render(<RunPane />);
+
+      // Default input value is the current max, so Apply has nothing to do.
+      expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    });
+
+    it("disables Apply when the new total is below the current iteration", async () => {
+      const user = userEvent.setup();
+      // Backend rejects new_total < iteration; the UI mirrors that so the
+      // user gets immediate visual feedback instead of a thrown error.
+      resetStore({
+        ...baseSession,
+        mode: "paused",
+        iteration: 50,
+        maxIterations: 100,
+      });
+      render(<RunPane />);
+
+      const input = screen.getByLabelText("Max iterations");
+      await user.clear(input);
+      await user.type(input, "25");
+
+      expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    });
+
+    it("re-syncs the input when the session's max iterations changes externally", async () => {
+      resetStore({ ...baseSession, maxIterations: 100 });
+      const { rerender } = render(<RunPane />);
+
+      // Simulate a saved-run load that pulled a different max from the file.
+      resetStore({ ...baseSession, maxIterations: 500 });
+      rerender(<RunPane />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Max iterations")).toHaveValue(500);
+      });
+    });
+  });
 });

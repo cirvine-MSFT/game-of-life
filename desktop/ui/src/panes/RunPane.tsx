@@ -1,6 +1,10 @@
+import { useEffect, useState } from "react";
 import {
   Badge,
+  Button,
   Caption1,
+  Field,
+  Input,
   MessageBar,
   MessageBarBody,
   Subtitle2,
@@ -68,6 +72,18 @@ const useStyles = makeStyles({
     alignItems: "flex-start",
     gap: tokens.spacingVerticalS,
   },
+  maxIterField: {
+    display: "flex",
+    flexDirection: "column",
+    minWidth: "140px",
+    gap: tokens.spacingVerticalXS,
+  },
+  maxIterRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: tokens.spacingHorizontalXS,
+  },
+  maxIterInput: { width: "92px" },
   note: {
     color: tokens.colorNeutralForeground3,
   },
@@ -92,6 +108,39 @@ export const RunPane = () => {
   const loadSavedRun = useStore((s) => s.loadSavedRun);
   const loadRunBoard = useStore((s) => s.loadRunBoard);
   const loadedReference = useStore((s) => s.loadedReference);
+  const extendMaxIterations = useStore((s) => s.extendMaxIterations);
+
+  const sessionMaxIter = session?.maxIterations ?? 0;
+  const sessionIter = session?.iteration ?? 0;
+  const [maxIterInput, setMaxIterInput] = useState(() => String(sessionMaxIter));
+
+  // Re-sync the local input whenever the backend's max changes — loading
+  // a saved run pulls its max-iterations from the file, and the user
+  // shouldn't have to remember to update the field manually.
+  useEffect(() => {
+    setMaxIterInput(String(sessionMaxIter));
+  }, [sessionMaxIter]);
+
+  const parsedMaxIter = (() => {
+    const trimmed = maxIterInput.trim();
+    if (trimmed === "") return null;
+    const n = Number.parseInt(trimmed, 10);
+    return Number.isFinite(n) ? n : null;
+  })();
+  // Backend rejects new_total < current iteration to avoid corrupting
+  // the series. Mirror that limit in the UI so Apply doesn't fire and
+  // immediately surface an error.
+  const minAllowedMax = Math.max(1, sessionIter);
+  const canApplyMax =
+    session !== null &&
+    parsedMaxIter !== null &&
+    parsedMaxIter >= minAllowedMax &&
+    parsedMaxIter !== sessionMaxIter;
+
+  const applyMaxIter = () => {
+    if (!canApplyMax || parsedMaxIter === null) return;
+    void extendMaxIterations(parsedMaxIter);
+  };
 
   return (
     <section className={styles.root} aria-label="Run">
@@ -107,6 +156,35 @@ export const RunPane = () => {
           <ToolbarButton onClick={() => void loadRunBoard("final")}>
             Import final board…
           </ToolbarButton>
+          <ToolbarDivider />
+          <Field
+            className={styles.maxIterField}
+            label={`Max iterations${sessionMaxIter ? ` (current ${sessionMaxIter})` : ""}`}
+          >
+            <div className={styles.maxIterRow}>
+              <Input
+                className={styles.maxIterInput}
+                aria-label="Max iterations"
+                type="number"
+                min={minAllowedMax}
+                value={maxIterInput}
+                disabled={!session}
+                onChange={(_, data) => setMaxIterInput(data.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    applyMaxIter();
+                  }
+                }}
+              />
+              <Button
+                appearance="secondary"
+                disabled={!canApplyMax}
+                onClick={applyMaxIter}
+              >
+                Apply
+              </Button>
+            </div>
+          </Field>
         </Toolbar>
 
         <PlaybackControls />
