@@ -82,6 +82,10 @@ export const PlaybackControls = () => {
   const finalStats = useStore((s) => s.finalStats);
   const [gps, setGps] = useState(5);
   const [jumpTarget, setJumpTarget] = useState("");
+  // Guards against a double-click on Play in setup mode firing two
+  // concurrent startRun chains. The backend would reject the second,
+  // but the unhandled promise noise is avoidable.
+  const [isStarting, setIsStarting] = useState(false);
 
   if (!session) {
     return null;
@@ -103,7 +107,7 @@ export const PlaybackControls = () => {
   // "Play" while paused means "Resume", and the same button flips to
   // "Pause" while a run is in flight.
   const showPause = isPlaying || isJumping;
-  const canPlay = !showPause && hasBoard && !session.completed;
+  const canPlay = !showPause && hasBoard && !session.completed && !isStarting;
   const canPause = isPlaying || isJumping;
   const canJump = isPaused;
   const playOrPause = () => {
@@ -117,9 +121,19 @@ export const PlaybackControls = () => {
     // two calls so a single click on Play in setup just starts playing.
     void (async () => {
       if (inSetup) {
-        await startRun();
+        setIsStarting(true);
+        try {
+          await startRun();
+        } catch {
+          setIsStarting(false);
+          return;
+        }
       }
-      await play(gps);
+      try {
+        await play(gps);
+      } finally {
+        setIsStarting(false);
+      }
     })();
   };
 

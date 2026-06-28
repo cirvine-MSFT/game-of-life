@@ -238,6 +238,30 @@ describe("RunPane", () => {
     expect(useStore.getState().loadedReference).toBeNull();
   });
 
+  it("leaves reference state untouched when loadRunBoard fails after a successful read", async () => {
+    // Belt-and-braces for the read-first-then-mutate contract: even when
+    // readRunSeries succeeds, a subsequent loadRunBoard failure must not
+    // leave history/finalStats/loadedReference half-populated.
+    dialog.open.mockResolvedValueOnce("C:\\runs\\saved.gol");
+    vi.mocked(ipc.readRunSeries).mockResolvedValueOnce(savedRunSeries);
+    vi.mocked(ipc.loadRunBoard).mockRejectedValueOnce(
+      new Error("board import failed"),
+    );
+    useStore.setState({
+      history: [1, 2],
+      finalStats: completedStats,
+      loadedReference: null,
+    });
+
+    await useStore.getState().loadSavedRun();
+
+    expect(ipc.readRunSeries).toHaveBeenCalledTimes(1);
+    expect(ipc.loadRunBoard).toHaveBeenCalledTimes(1);
+    expect(useStore.getState().loadedReference).toBeNull();
+    expect(useStore.getState().history).toEqual([1, 2]);
+    expect(useStore.getState().finalStats).toEqual(completedStats);
+  });
+
   describe("Max iterations field", () => {
     it("strips non-digit characters typed into the input", async () => {
       const user = userEvent.setup();
@@ -307,11 +331,13 @@ describe("RunPane", () => {
       expect(extendMaxIterations).not.toHaveBeenCalled();
     });
 
-    it("snaps the input back when the typed value is below the current iteration", async () => {
+    it("snaps the input back when the typed value is at or below the current iteration", async () => {
       const user = userEvent.setup();
-      // Backend rejects new_total < iteration; rather than firing the
-      // request and surfacing the error, the input snaps back so the
-      // user sees the rejection immediately.
+      // Setting max to <= the current iteration would either be an
+      // immediate completion or — given the backend's cap detection
+      // fires after iteration += 1 — allow one stray advance past the
+      // requested cap. Neither matches user intent, so we require
+      // strictly greater than current iteration.
       resetStore({
         ...baseSession,
         mode: "paused",
@@ -324,8 +350,36 @@ describe("RunPane", () => {
       render(<RunPane />);
 
       const input = screen.getByLabelText("Max iterations");
+
+      // Below current iteration: snaps back.
       await user.clear(input);
       await user.type(input, "25");
+      await user.tab();
+      expect(extendMaxIterations).not.toHaveBeenCalled();
+      expect(input).toHaveValue("100");
+
+      // Equal to current iteration: also snaps back.
+      await user.clear(input);
+      await user.type(input, "50");
+      await user.tab();
+      expect(extendMaxIterations).not.toHaveBeenCalled();
+      expect(input).toHaveValue("100");
+    });
+
+    it("rejects unsafe-integer pastes instead of forwarding them to IPC", async () => {
+      const user = userEvent.setup();
+      // A 16-digit paste is past Number.MAX_SAFE_INTEGER (~9.007e15).
+      // Sending that to the Rust side would round to something the user
+      // never typed; better to snap back and force the user to retype.
+      resetStore({ ...baseSession, maxIterations: 100 });
+      const extendMaxIterations = vi.fn().mockResolvedValue(undefined);
+      useStore.setState({ extendMaxIterations });
+
+      render(<RunPane />);
+
+      const input = screen.getByLabelText("Max iterations");
+      await user.clear(input);
+      await user.type(input, "9999999999999999");
       await user.tab();
 
       expect(extendMaxIterations).not.toHaveBeenCalled();

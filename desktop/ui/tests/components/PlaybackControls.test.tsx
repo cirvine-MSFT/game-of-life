@@ -137,4 +137,68 @@ describe("PlaybackControls Play/Pause", () => {
 
     expect(pause).toHaveBeenCalledTimes(1);
   });
+
+  it("does not call play(gps) until startRun() has resolved", async () => {
+    const user = userEvent.setup();
+    useStore.setState({ session: sessionFor({ mode: "setup" }) });
+
+    // Make startRun hang until we explicitly resolve it so we can observe
+    // the in-flight state. play must not fire while the chain is waiting.
+    let resolveStart!: () => void;
+    const startRun = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+    const play = vi.fn().mockResolvedValue(undefined);
+    useStore.setState({ startRun, play });
+
+    render(<PlaybackControls />);
+
+    await user.click(
+      screen.getByRole("button", { name: /Start the simulation/i }),
+    );
+
+    expect(startRun).toHaveBeenCalledTimes(1);
+    expect(play).not.toHaveBeenCalled();
+
+    resolveStart();
+    // Drain the chained microtasks so the awaited play() fires.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a rapid second click on Play while startRun is in flight", async () => {
+    const user = userEvent.setup();
+    useStore.setState({ session: sessionFor({ mode: "setup" }) });
+
+    let resolveStart!: () => void;
+    const startRun = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+    const play = vi.fn().mockResolvedValue(undefined);
+    useStore.setState({ startRun, play });
+
+    render(<PlaybackControls />);
+
+    const button = screen.getByRole("button", { name: /Start the simulation/i });
+    await user.click(button);
+    // Second click while the first is in flight — the button is disabled
+    // by the in-flight guard, so userEvent's click is a no-op here.
+    await user.click(button);
+
+    expect(startRun).toHaveBeenCalledTimes(1);
+
+    resolveStart();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(play).toHaveBeenCalledTimes(1);
+  });
 });

@@ -128,12 +128,18 @@ export const RunPane = () => {
   const commitMaxIter = () => {
     const trimmed = maxIterInput.trim();
     const parsed = trimmed === "" ? NaN : Number.parseInt(trimmed, 10);
-    const minAllowed = Math.max(1, sessionIter);
-    // Anything that fails validation snaps the input back to the live
-    // session value rather than silently swallowing the typed digits —
-    // that way the user sees the rejection instead of starting a run
-    // with a stale cap.
-    if (!Number.isFinite(parsed) || parsed < minAllowed) {
+    // The backend accepts new_total == iteration, but then Step/Play can
+    // still tick the counter exactly once before the cap detection fires —
+    // raising the cap to "where we are now" doesn't match what the user
+    // means by it. Require strictly greater than current iteration, and
+    // also clamp to JS's safe-integer ceiling so a wild paste like
+    // "9999999999999999" doesn't round-trip into IPC as an unsafe number.
+    const strictMin = sessionIter + 1;
+    if (
+      !Number.isFinite(parsed) ||
+      !Number.isSafeInteger(parsed) ||
+      parsed < strictMin
+    ) {
       setMaxIterInput(String(sessionMaxIter));
       return;
     }

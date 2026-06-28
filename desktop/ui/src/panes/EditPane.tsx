@@ -146,7 +146,13 @@ const parseInteger = (value: string): number | null => {
     return null;
   }
   const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : null;
+  // Reject NaN, Infinity, and anything past JS's safe-integer ceiling so
+  // an oversized paste like 9999999999999999 doesn't silently round-trip
+  // into the IPC layer where Rust expects a real integer.
+  if (!Number.isSafeInteger(parsed)) {
+    return null;
+  }
+  return parsed;
 };
 
 const paletteNameFor = (theme: ThemeChoice): "light" | "dark" | "highContrast" => {
