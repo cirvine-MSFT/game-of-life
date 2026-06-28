@@ -16,6 +16,7 @@ import {
 } from "recharts";
 
 import { useStore } from "../state/store";
+import { prepareSeries } from "../state/seriesDecimation";
 import { formatTerminalStatusFromStats } from "../state/terminalStatus";
 
 const useStyles = makeStyles({
@@ -38,32 +39,6 @@ const useStyles = makeStyles({
     width: "100%",
   },
 });
-
-const HISTORY_DECIMATION_TARGET = 200;
-
-/**
- * Decimates the alive-count history down to roughly
- * `HISTORY_DECIMATION_TARGET` points so Recharts stays responsive even
- * after thousands of generations. We tag each point with its absolute
- * generation index so the chart's x-axis reflects real time, not the
- * decimated index.
- */
-const prepareSeries = (history: number[]): { generation: number; alive: number }[] => {
-  if (history.length <= HISTORY_DECIMATION_TARGET) {
-    return history.map((alive, generation) => ({ generation, alive }));
-  }
-  const stride = Math.ceil(history.length / HISTORY_DECIMATION_TARGET);
-  const out: { generation: number; alive: number }[] = [];
-  for (let i = 0; i < history.length; i += stride) {
-    out.push({ generation: i, alive: history[i] });
-  }
-  // Always include the most recent point so the chart's right edge
-  // matches the current iteration.
-  if (out[out.length - 1]?.generation !== history.length - 1) {
-    out.push({ generation: history.length - 1, alive: history[history.length - 1] });
-  }
-  return out;
-};
 
 export const StatsPanel = () => {
   const styles = useStyles();

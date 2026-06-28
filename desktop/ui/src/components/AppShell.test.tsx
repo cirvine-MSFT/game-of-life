@@ -18,6 +18,7 @@ const resetStore = () => {
     activeView: "edit",
     connected: false,
     initError: null,
+    aggregateRows: [],
   });
   try {
     localStorage.clear();
@@ -47,7 +48,7 @@ describe("AppShell nav rail", () => {
       screen.getByRole("tab", { name: "Aggregate statistics" }),
     );
     expect(
-      screen.getByLabelText("Aggregate statistics placeholder"),
+      screen.getByRole("region", { name: "Aggregate statistics" }),
     ).toBeInTheDocument();
     expect(useStore.getState().activeView).toBe("aggregate");
   });
@@ -77,5 +78,25 @@ describe("AppShell nav rail", () => {
 
     await user.click(screen.getByRole("tab", { name: "Settings" }));
     expect(screen.getByLabelText("Status bar")).toHaveTextContent(/Theme/);
+
+    useStore.setState({
+      aggregateRows: [
+        {
+          path: "C:\\runs\\bad.gol",
+          filename: "bad.gol",
+          status: "error",
+          colorIndex: 0,
+          visible: false,
+          error: "bad magic",
+        },
+      ],
+    });
+    await user.click(
+      screen.getByRole("tab", { name: "Aggregate statistics" }),
+    );
+    expect(screen.getByLabelText("Status bar")).toHaveTextContent(
+      "Selected: 1 · Loaded: 0 · Errors: 1",
+    );
+    expect(screen.getByLabelText("Status bar")).toHaveTextContent("bad magic");
   });
 });

@@ -8,11 +8,11 @@ import {
 } from "@fluentui/react-components";
 
 import { NavRail } from "./NavRail";
-import { AggregatePanePlaceholder } from "../panes/PanePlaceholders";
+import { AggregatePane } from "../panes/AggregatePane";
 import { EditPane } from "../panes/EditPane";
 import { RunPane } from "../panes/RunPane";
 import { SettingsPane } from "../panes/SettingsPane";
-import { useStore, type ActiveView } from "../state/store";
+import { useStore, type ActiveView, type AggregateRow } from "../state/store";
 
 const useStyles = makeStyles({
   root: {
@@ -61,7 +61,7 @@ const paneFor = (view: ActiveView) => {
     case "run":
       return <RunPane />;
     case "aggregate":
-      return <AggregatePanePlaceholder />;
+      return <AggregatePane />;
     case "settings":
       return <SettingsPane />;
     // Telemetry is reachable only via a disabled rail tab; the store's
@@ -77,17 +77,23 @@ const paneFor = (view: ActiveView) => {
 const statusBarLeft = (
   view: ActiveView,
   session: ReturnType<typeof useStore.getState>["session"],
+  aggregateRows: AggregateRow[],
 ): string => {
-  if (!session) return "Connecting\u2026";
+  if (view === "aggregate") {
+    const loaded = aggregateRows.filter(
+      (row) => row.status === "ready" || row.status === "summaryOnly",
+    ).length;
+    const errors = aggregateRows.filter((row) => row.status === "error").length;
+    return `Selected: ${aggregateRows.length} · Loaded: ${loaded} · Errors: ${errors}`;
+  }
+  if (!session) return "Connecting…";
   switch (view) {
-    case "aggregate":
-      return "Aggregate view";
     case "settings":
       return "Settings";
     case "edit":
     case "run":
     default:
-      return `Mode: ${session.mode} \u00b7 ${session.width}\u00d7${session.height} \u00b7 Iter ${session.iteration}`;
+      return `Mode: ${session.mode} · ${session.width}×${session.height} · Iter ${session.iteration}`;
   }
 };
 
@@ -95,12 +101,15 @@ const statusBarRight = (
   view: ActiveView,
   session: ReturnType<typeof useStore.getState>["session"],
   theme: string,
+  aggregateRows: AggregateRow[],
 ): string => {
   switch (view) {
     case "settings":
       return `Theme: ${theme}`;
-    case "aggregate":
-      return "";
+    case "aggregate": {
+      const errorRows = aggregateRows.filter((row) => row.status === "error" && row.error);
+      return errorRows[errorRows.length - 1]?.error ?? "";
+    }
     case "edit":
     case "run":
     default:
@@ -125,6 +134,7 @@ export const AppShell = () => {
   const session = useStore((s) => s.session);
   const activeView = useStore((s) => s.activeView);
   const theme = useStore((s) => s.theme);
+  const aggregateRows = useStore((s) => s.aggregateRows);
 
   useEffect(() => {
     void connect();
@@ -153,8 +163,10 @@ export const AppShell = () => {
       <div className={styles.body}>
         <div className={styles.content}>{paneFor(activeView)}</div>
         <div className={styles.statusBar} aria-label="Status bar">
-          <Caption1>{statusBarLeft(activeView, session)}</Caption1>
-          <Caption1>{statusBarRight(activeView, session, theme)}</Caption1>
+          <Caption1>{statusBarLeft(activeView, session, aggregateRows)}</Caption1>
+          <Caption1>
+            {statusBarRight(activeView, session, theme, aggregateRows)}
+          </Caption1>
         </div>
       </div>
     </div>

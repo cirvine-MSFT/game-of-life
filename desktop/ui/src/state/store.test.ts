@@ -133,6 +133,7 @@ const resetStore = () => {
     activeView: "edit",
     connected: false,
     initError: null,
+    aggregateRows: [],
   });
   try {
     localStorage.clear();
@@ -670,6 +671,168 @@ describe("loadSavedRun()", () => {
   });
 });
 
+
+const aggregateSeriesFor = (path: string, filename: string): IpcRunSeries => ({
+  path,
+  filename,
+  summary: completedStats,
+  series: {
+    alive: [4, 5, 6],
+    births: [0, 2, 2],
+    deaths: [0, 1, 1],
+  },
+});
+
+describe("aggregate slice", () => {
+  it("addAggregateFiles dedupes by path", async () => {
+    vi.mocked(ipc.readRunSeries).mockResolvedValueOnce(
+      aggregateSeriesFor("C:\\runs\\a.gol", "a.gol"),
+    );
+
+    await useStore.getState().addAggregateFiles([
+      "C:\\runs\\a.gol",
+      "C:\\runs\\a.gol",
+    ]);
+    await useStore.getState().addAggregateFiles(["C:\\runs\\a.gol"]);
+
+    expect(ipc.readRunSeries).toHaveBeenCalledTimes(1);
+    expect(useStore.getState().aggregateRows).toHaveLength(1);
+  });
+
+  it("addAggregateFiles patches a ready row with series and summary", async () => {
+    const payload = aggregateSeriesFor("C:\\runs\\ready.gol", "ready.gol");
+    vi.mocked(ipc.readRunSeries).mockResolvedValueOnce(payload);
+
+    await useStore.getState().addAggregateFiles(["C:\\runs\\ready.gol"]);
+
+    expect(useStore.getState().aggregateRows[0]).toMatchObject({
+      path: "C:\\runs\\ready.gol",
+      filename: "ready.gol",
+      status: "ready",
+      summary: completedStats,
+      series: payload.series,
+    });
+  });
+
+  it("addAggregateFiles patches a v1 file as summaryOnly", async () => {
+    vi.mocked(ipc.readRunSeries).mockResolvedValueOnce({
+      ...aggregateSeriesFor("C:\\runs\\legacy.gol", "legacy.gol"),
+      series: null,
+    });
+
+    await useStore.getState().addAggregateFiles(["C:\\runs\\legacy.gol"]);
+
+    expect(useStore.getState().aggregateRows[0]).toMatchObject({
+      status: "summaryOnly",
+      summary: completedStats,
+      series: undefined,
+    });
+  });
+
+  it("addAggregateFiles patches a rejected read as error", async () => {
+    vi.mocked(ipc.readRunSeries).mockRejectedValueOnce(new Error("bad magic"));
+
+    await useStore.getState().addAggregateFiles(["C:\\runs\\bad.gol"]);
+
+    expect(useStore.getState().aggregateRows[0]).toMatchObject({
+      path: "C:\\runs\\bad.gol",
+      status: "error",
+      error: "bad magic",
+    });
+  });
+
+  it("ignores stale reads after a row is removed and re-added", async () => {
+    let resolveFirst: (payload: IpcRunSeries) => void = () => undefined;
+    const firstRead = new Promise<IpcRunSeries>((resolve) => {
+      resolveFirst = resolve;
+    });
+    vi.mocked(ipc.readRunSeries)
+      .mockReturnValueOnce(firstRead)
+      .mockResolvedValueOnce(
+        aggregateSeriesFor("C:\\runs\\same.gol", "new.gol"),
+      );
+
+    const firstAdd = useStore.getState().addAggregateFiles(["C:\\runs\\same.gol"]);
+    useStore.getState().removeAggregateRow("C:\\runs\\same.gol");
+    const secondAdd = useStore.getState().addAggregateFiles(["C:\\runs\\same.gol"]);
+
+    await secondAdd;
+    resolveFirst(aggregateSeriesFor("C:\\runs\\same.gol", "old.gol"));
+    await firstAdd;
+
+    expect(useStore.getState().aggregateRows).toHaveLength(1);
+    expect(useStore.getState().aggregateRows[0]).toMatchObject({
+      filename: "new.gol",
+      status: "ready",
+    });
+  });
+
+  it("removeAggregateRow removes the matching row", () => {
+    useStore.setState({
+      aggregateRows: [
+        {
+          path: "C:\\runs\\a.gol",
+          filename: "a.gol",
+          status: "ready",
+          colorIndex: 0,
+          visible: true,
+          summary: completedStats,
+          series: aggregateSeriesFor("C:\\runs\\a.gol", "a.gol").series ?? undefined,
+        },
+        {
+          path: "C:\\runs\\b.gol",
+          filename: "b.gol",
+          status: "error",
+          colorIndex: 1,
+          visible: false,
+          error: "bad magic",
+        },
+      ],
+    });
+
+    useStore.getState().removeAggregateRow("C:\\runs\\a.gol");
+
+    expect(useStore.getState().aggregateRows.map((row) => row.path)).toEqual([
+      "C:\\runs\\b.gol",
+    ]);
+  });
+
+  it("clearAggregate empties the list", () => {
+    useStore.setState({
+      aggregateRows: [
+        {
+          path: "C:\\runs\\a.gol",
+          filename: "a.gol",
+          status: "ready",
+          colorIndex: 0,
+          visible: true,
+        },
+      ],
+    });
+
+    useStore.getState().clearAggregate();
+
+    expect(useStore.getState().aggregateRows).toEqual([]);
+  });
+
+  it("setAggregateRowVisible flips visibility for the matching row", () => {
+    useStore.setState({
+      aggregateRows: [
+        {
+          path: "C:\\runs\\a.gol",
+          filename: "a.gol",
+          status: "ready",
+          colorIndex: 0,
+          visible: true,
+        },
+      ],
+    });
+
+    useStore.getState().setAggregateRowVisible("C:\\runs\\a.gol", false);
+
+    expect(useStore.getState().aggregateRows[0].visible).toBe(false);
+  });
+});
 
 describe("saveBoardSnapshot()", () => {
   it("defaults to the current save path when one exists", async () => {

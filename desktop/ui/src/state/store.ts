@@ -45,6 +45,7 @@ import {
   step,
   type CreateRunArgs,
   type DecodedBoard,
+  type IpcIterationSeries,
   type IpcRunStatistics,
   type JumpProgress,
   type PatternName,
@@ -60,6 +61,23 @@ export type ActiveView =
   | "aggregate"
   | "settings"
   | "telemetry";
+
+export type AggregateRowStatus =
+  | "loading"
+  | "ready"
+  | "summaryOnly"
+  | "error";
+
+export interface AggregateRow {
+  path: string;
+  filename: string;
+  status: AggregateRowStatus;
+  colorIndex: number;
+  visible: boolean;
+  series?: IpcIterationSeries;
+  summary?: IpcRunStatistics;
+  error?: string;
+}
 
 const ACTIVE_VIEW_STORAGE_KEY = "gol.activeView";
 const VALID_PERSISTED_VIEWS: readonly ActiveView[] = [
@@ -132,6 +150,7 @@ interface AppState {
   activeView: ActiveView;
   connected: boolean;
   initError: string | null;
+  aggregateRows: AggregateRow[];
 
   // Lifecycle
   connect: () => Promise<void>;
@@ -164,6 +183,12 @@ interface AppState {
   // Navigation
   setActiveView: (view: ActiveView) => void;
 
+  // Aggregate analysis
+  addAggregateFiles: (paths: string[]) => Promise<void>;
+  removeAggregateRow: (path: string) => void;
+  clearAggregate: () => void;
+  setAggregateRowVisible: (path: string, visible: boolean) => void;
+
   // Persistence
   loadBoardSnapshot: () => Promise<void>;
   loadRunBoard: (selection: RunBoardSelection) => Promise<void>;
@@ -175,6 +200,7 @@ interface AppState {
 }
 
 let unlistens: UnlistenFn[] = [];
+const pendingAggregateRequests = new Map<string, symbol>();
 
 const DEFAULT_NEW_RUN: CreateRunArgs = {
   width: 20,
@@ -198,6 +224,20 @@ const messageFromUnknown = (error: unknown): string => {
   return String(error);
 };
 
+const getFilenameFromPath = (path: string): string => {
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+};
+
+const nextColorIndex = (used: Set<number>): number => {
+  let index = 0;
+  while (used.has(index)) {
+    index += 1;
+  }
+  used.add(index);
+  return index;
+};
+
 export const useStore = create<AppState>((set, get) => ({
   session: null,
   board: null,
@@ -210,6 +250,7 @@ export const useStore = create<AppState>((set, get) => ({
   activeView: loadPersistedActiveView(),
   connected: false,
   initError: null,
+  aggregateRows: [],
 
   connect: async () => {
     if (get().connected) {
@@ -454,6 +495,101 @@ export const useStore = create<AppState>((set, get) => ({
     // rather than letting it linger in localStorage.
     persistActiveView(view);
     set({ activeView: view });
+  },
+
+  addAggregateFiles: async (paths) => {
+    const existingPaths = new Set(get().aggregateRows.map((row) => row.path));
+    const uniqueNewPaths = paths.filter((path, index) => {
+      if (existingPaths.has(path) || paths.indexOf(path) !== index) {
+        return false;
+      }
+      return true;
+    });
+    if (uniqueNewPaths.length === 0) {
+      return;
+    }
+
+    const usedColors = new Set(get().aggregateRows.map((row) => row.colorIndex));
+    let visibleCount = get().aggregateRows.filter((row) => row.visible).length;
+    const requestTokens = new Map<string, symbol>();
+    const rowsToAdd: AggregateRow[] = uniqueNewPaths.map((path) => {
+      const visible = visibleCount < 8;
+      if (visible) {
+        visibleCount += 1;
+      }
+      const token = Symbol(path);
+      pendingAggregateRequests.set(path, token);
+      requestTokens.set(path, token);
+      return {
+        path,
+        filename: getFilenameFromPath(path),
+        status: "loading",
+        colorIndex: nextColorIndex(usedColors),
+        visible,
+      };
+    });
+
+    set((state) => ({ aggregateRows: [...state.aggregateRows, ...rowsToAdd] }));
+
+    const reads = rowsToAdd.map((row) => readRunSeries(row.path));
+    const results = await Promise.allSettled(reads);
+    results.forEach((result, index) => {
+      const path = rowsToAdd[index].path;
+      if (pendingAggregateRequests.get(path) !== requestTokens.get(path)) {
+        return;
+      }
+      pendingAggregateRequests.delete(path);
+      if (result.status === "fulfilled") {
+        const payload = result.value;
+        set((state) => ({
+          aggregateRows: state.aggregateRows.map((row) =>
+            row.path === path
+              ? {
+                  ...row,
+                  filename: payload.filename || row.filename,
+                  status: payload.series ? "ready" : "summaryOnly",
+                  series: payload.series ?? undefined,
+                  summary: payload.summary,
+                  error: undefined,
+                }
+              : row,
+          ),
+        }));
+        return;
+      }
+
+      set((state) => ({
+        aggregateRows: state.aggregateRows.map((row) =>
+          row.path === path
+            ? {
+                ...row,
+                status: "error",
+                error: messageFromUnknown(result.reason),
+              }
+            : row,
+        ),
+      }));
+    });
+  },
+
+  removeAggregateRow: (path) => {
+    pendingAggregateRequests.delete(path);
+    set((state) => ({
+      aggregateRows: state.aggregateRows.filter((row) => row.path !== path),
+    }));
+  },
+
+  clearAggregate: () => {
+    pendingAggregateRequests.clear();
+    set({ aggregateRows: [] });
+  },
+
+  setAggregateRowVisible: (path, visible) => {
+    set((state) => ({
+      aggregateRows: state.aggregateRows.map((row) =>
+        row.path === path ? { ...row, visible } : row,
+      ),
+    }));
   },
 
   loadBoardSnapshot: async () => {
