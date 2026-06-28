@@ -3,6 +3,7 @@
 //! These are integration tests per the project convention; only the public
 //! API of `game_of_life_desktop_lib::ipc_types` is exercised.
 
+use game_of_life::persistence::RunRecordResult;
 use game_of_life::stats::run_statistics::{CycleStatistics, RunStatus};
 use game_of_life::{AdvanceOutcome, CellState, RunStatistics};
 use game_of_life_desktop_lib::ipc_types::{
@@ -127,6 +128,54 @@ fn run_statistics_conversion_preserves_cycle_metadata() {
     assert_eq!(ipc.cycle_start_generation, Some(0));
     assert_eq!(ipc.cycle_detected_generation, Some(2));
     assert_eq!(ipc.cycle_period, Some(2));
+}
+
+fn run_record_result_fixture(status: &str) -> RunRecordResult {
+    RunRecordResult {
+        status: status.to_string(),
+        iterations_run: 2,
+        wall_time_ms: 9,
+        initial_alive_count: 3,
+        final_alive_count: 5,
+        peak_alive_count: 6,
+        peak_alive_generation: 1,
+        min_alive_count: 3,
+        min_alive_generation: 0,
+        total_births: 4,
+        total_deaths: 2,
+        cycle_start_generation: None,
+        cycle_detected_generation: None,
+        cycle_period: None,
+        initial_board_hash: 0,
+        final_board_hash: 0,
+    }
+}
+
+#[test]
+fn run_record_result_conversion_preserves_every_summary_field() {
+    let result = run_record_result_fixture("max_iterations");
+
+    let ipc = IpcRunStatistics::try_from_result(&result).unwrap();
+
+    assert_eq!(ipc.initial_alive_count, 3);
+    assert_eq!(ipc.final_alive_count, 5);
+    assert_eq!(ipc.peak_alive_count, 6);
+    assert_eq!(ipc.peak_alive_generation, 1);
+    assert_eq!(ipc.min_alive_count, 3);
+    assert_eq!(ipc.min_alive_generation, 0);
+    assert_eq!(ipc.total_births, 4);
+    assert_eq!(ipc.total_deaths, 2);
+    assert_eq!(ipc.iterations_run, 2);
+    assert_eq!(ipc.status, IpcRunStatus::MaxIterations);
+}
+
+#[test]
+fn negative_run_record_result_conversion_rejects_unknown_status() {
+    let result = run_record_result_fixture("unexpected");
+
+    let err = IpcRunStatistics::try_from_result(&result).unwrap_err();
+
+    assert!(err.contains("unexpected"), "{err}");
 }
 
 #[test]

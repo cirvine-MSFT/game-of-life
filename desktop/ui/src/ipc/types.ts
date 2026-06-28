@@ -61,6 +61,19 @@ export interface IpcRunStatistics {
   cyclePeriod?: number | null;
 }
 
+export interface IpcIterationSeries {
+  alive: number[];
+  births: number[];
+  deaths: number[];
+}
+
+export interface IpcRunSeries {
+  path: string;
+  filename: string;
+  summary: IpcRunStatistics;
+  series: IpcIterationSeries | null;
+}
+
 export interface RunCompleted {
   iteration: number;
   status: IpcRunStatus;

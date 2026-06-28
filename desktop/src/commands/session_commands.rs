@@ -9,10 +9,16 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use game_of_life::persistence::{
+    read_run_record, sniff_file_kind, ContentHashMode, FileKind, DEFAULT_MAX_INPUT_FILE_BYTES,
+};
 use tauri::State;
 
-use crate::ipc_types::{BoardPayload, IpcRunStatistics, RunBoardSelection, SessionInfo};
-use crate::session::{RunSession, SessionError};
+use crate::ipc_types::{
+    BoardPayload, IpcIterationSeries, IpcRunSeries, IpcRunStatistics, RunBoardSelection,
+    SessionInfo,
+};
+use crate::session::{RunSession, SessionError, DEFAULT_MAX_BOARD_MEMORY_BYTES};
 
 #[tauri::command]
 pub fn get_session(session: State<'_, Arc<RunSession>>) -> SessionInfo {
@@ -32,6 +38,38 @@ pub fn get_alive_history(session: State<'_, Arc<RunSession>>) -> Vec<u64> {
 #[tauri::command]
 pub fn get_final_stats(session: State<'_, Arc<RunSession>>) -> Option<IpcRunStatistics> {
     session.final_stats()
+}
+
+#[tauri::command]
+pub fn read_run_series(path: String) -> Result<IpcRunSeries, String> {
+    let p = PathBuf::from(&path);
+    let kind = sniff_file_kind(&p).map_err(|e| e.to_string())?;
+    if kind != FileKind::RunRecord {
+        return Err(format!(
+            "File '{}' is a {}, but expected a run record.",
+            p.display(),
+            kind
+        ));
+    }
+
+    let record = read_run_record(
+        &p,
+        DEFAULT_MAX_BOARD_MEMORY_BYTES,
+        DEFAULT_MAX_INPUT_FILE_BYTES,
+        ContentHashMode::Enforce,
+    )
+    .map_err(|e| e.to_string())?;
+    let filename = p
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.clone());
+
+    Ok(IpcRunSeries {
+        path,
+        filename,
+        summary: IpcRunStatistics::try_from_result(&record.result)?,
+        series: record.series.as_ref().map(IpcIterationSeries::from),
+    })
 }
 
 /// Returns the platform-appropriate default directory for saving .gol

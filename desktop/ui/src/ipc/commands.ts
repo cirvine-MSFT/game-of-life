@@ -8,6 +8,7 @@ import type {
   BoardPayload,
   CellEdit,
   InitialSource,
+  IpcRunSeries,
   IpcRunStatistics,
   PatternName,
   RunBoardSelection,
@@ -25,6 +26,9 @@ export const getAliveHistory = (): Promise<number[]> =>
 
 export const getFinalStats = (): Promise<IpcRunStatistics | null> =>
   invoke("get_final_stats");
+
+export const readRunSeries = (path: string): Promise<IpcRunSeries> =>
+  invoke("read_run_series", { path });
 
 export const defaultSaveDir = (): Promise<string> => invoke("default_save_dir");
 
