@@ -12,6 +12,8 @@ mod board_snapshot_tests;
 mod cli_tests;
 #[path = "persistence/hash_tests.rs"]
 mod hash_tests;
+#[path = "persistence/iteration_series_tests.rs"]
+mod iteration_series_tests;
 #[path = "persistence/magic_tests.rs"]
 mod magic_tests;
 #[path = "persistence/parser_tests.rs"]

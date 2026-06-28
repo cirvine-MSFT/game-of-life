@@ -934,7 +934,7 @@ fn load_run_error_message(error: RunRecordReadError) -> String {
         | RunRecordReadError::MalformedRunId { .. }
         | RunRecordReadError::MalformedField { .. }
         | RunRecordReadError::MissingField { .. } => {
-            "Selected file is not a valid Game of Life run record. Expected a GOL-RUN-RECORD v1 .gol file."
+            "Selected file is not a valid Game of Life run record. Expected a GOL-RUN-RECORD v1 or v2 .gol file."
                 .to_string()
         }
     }

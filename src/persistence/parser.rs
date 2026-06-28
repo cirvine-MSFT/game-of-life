@@ -103,6 +103,23 @@ pub enum ParseError {
         location: ParseLocation,
         version: u32,
     },
+    MalformedSeriesRow {
+        location: ParseLocation,
+        field: String,
+        value: String,
+    },
+    SeriesLengthMismatch {
+        location: ParseLocation,
+        field: String,
+        expected_len: usize,
+        actual_len: usize,
+    },
+    SeriesInitialValueMismatch {
+        location: ParseLocation,
+        field: String,
+        expected: u64,
+        actual: u64,
+    },
 }
 
 impl fmt::Display for ParseError {
@@ -194,7 +211,33 @@ impl fmt::Display for ParseError {
             ),
             ParseError::UnsupportedSchemaVersion { location, version } => write!(
                 f,
-                "Unsupported schema version {version} at {location}; this tool supports schema version 1."
+                "Unsupported schema version {version} at {location}; this tool does not support that schema for this file type."
+            ),
+            ParseError::MalformedSeriesRow {
+                location,
+                field,
+                value,
+            } => write!(
+                f,
+                "Malformed [series] row '{field}' at {location}: '{value}'. Expected comma-separated u64 values."
+            ),
+            ParseError::SeriesLengthMismatch {
+                location,
+                field,
+                expected_len,
+                actual_len,
+            } => write!(
+                f,
+                "[series] row '{field}' at {location} has {actual_len} values; expected {expected_len} (iterations_run + 1)."
+            ),
+            ParseError::SeriesInitialValueMismatch {
+                location,
+                field,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "[series] row '{field}' at {location} starts with {actual}; expected {expected}."
             ),
         }
     }
@@ -220,8 +263,44 @@ pub fn parse_field_line(location: ParseLocation, line: &str) -> Result<(&str, &s
             line: line.to_string(),
         });
     }
+
     let value = line[colon + 1..].trim();
     Ok((key, value))
+}
+
+pub fn parse_u64_list(
+    location: ParseLocation,
+    field: &str,
+    value: &str,
+) -> Result<Vec<u64>, ParseError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ParseError::MalformedSeriesRow {
+            location,
+            field: field.to_string(),
+            value: value.to_string(),
+        });
+    }
+
+    trimmed
+        .split(',')
+        .map(|part| {
+            let part = part.trim();
+            if part.is_empty() {
+                return Err(ParseError::MalformedSeriesRow {
+                    location: location.clone(),
+                    field: field.to_string(),
+                    value: value.to_string(),
+                });
+            }
+            part.parse::<u64>()
+                .map_err(|_| ParseError::MalformedSeriesRow {
+                    location: location.clone(),
+                    field: field.to_string(),
+                    value: value.to_string(),
+                })
+        })
+        .collect()
 }
 
 /// Recognizes `[section]`. Trimmed inside; case preserved.

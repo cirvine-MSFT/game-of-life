@@ -38,7 +38,9 @@ use std::time::SystemTime;
 use crate::board::{BoardView, CellCoordinate, CellState, InMemoryBoard, StreamingBoard};
 
 use super::errors::PersistenceIoError;
-use super::magic::{sniff_from_reader, FileKind, MagicError, BOARD_SNAPSHOT_MAGIC, SCHEMA_VERSION};
+use super::magic::{
+    sniff_from_reader, FileKind, MagicError, BOARD_SNAPSHOT_MAGIC, BOARD_SNAPSHOT_SCHEMA_VERSION,
+};
 use super::parser::{
     format_begin_fence, format_end_fence, parse_begin_fence, parse_end_fence, parse_field_line,
     strip_trailing_cr, ParseError, ParseLocation,
@@ -67,7 +69,7 @@ pub struct BoardSnapshot {
 impl BoardSnapshot {
     pub fn for_board(board: InMemoryBoard) -> Self {
         Self {
-            schema_version: SCHEMA_VERSION,
+            schema_version: BOARD_SNAPSHOT_SCHEMA_VERSION,
             created_at: SystemTime::now(),
             board,
         }
@@ -534,7 +536,7 @@ pub fn write_streaming_board_snapshot_to<W: Write>(
     board: &mut StreamingBoard,
 ) -> io::Result<()> {
     writeln!(writer, "{BOARD_SNAPSHOT_MAGIC}")?;
-    writeln!(writer, "schema_version: {SCHEMA_VERSION}")?;
+    writeln!(writer, "schema_version: {BOARD_SNAPSHOT_SCHEMA_VERSION}")?;
     writeln!(writer, "created_at: {}", format_utc(SystemTime::now()))?;
     writeln!(writer)?;
 
@@ -636,7 +638,7 @@ pub fn read_board_snapshot(
                                 location: location.clone(),
                                 line: format!("{key}: {value}"),
                             })?;
-                        if parsed != SCHEMA_VERSION {
+                        if parsed != BOARD_SNAPSHOT_SCHEMA_VERSION {
                             return Err(BoardSnapshotReadError::Parse(
                                 ParseError::UnsupportedSchemaVersion {
                                     location,

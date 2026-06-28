@@ -68,7 +68,7 @@ mod save_load_tests {
         assert!(stdout_text.contains("Saved run record:"));
         let record_path = one_run_record_in(&runs_dir);
         let body = std::fs::read_to_string(&record_path).expect("read record");
-        assert!(body.starts_with("GOL-RUN-RECORD v1"));
+        assert!(body.starts_with("GOL-RUN-RECORD v2"));
         assert!(body.contains("content_hash:"));
     }
 
@@ -88,7 +88,7 @@ mod save_load_tests {
         assert!(path.exists());
         assert!(std::fs::read_to_string(&path)
             .unwrap()
-            .starts_with("GOL-RUN-RECORD v1"));
+            .starts_with("GOL-RUN-RECORD v2"));
     }
 
     #[test]
@@ -571,7 +571,14 @@ mod replay_tests {
         let legacy_body = body
             .replacen("status: stable", "status: max_iterations", 1)
             .replacen("iterations_run: 0", "iterations_run: 10", 1);
-        std::fs::write(&source, legacy_body).unwrap();
+        let without_series = legacy_body
+            .split_once("[series]\n")
+            .and_then(|(before, rest)| {
+                rest.split_once("----- BEGIN INITIAL BOARD -----")
+                    .map(|(_, after)| format!("{before}----- BEGIN INITIAL BOARD -----{after}"))
+            })
+            .unwrap_or(legacy_body);
+        std::fs::write(&source, without_series).unwrap();
 
         let output = run_cli(&["--replay", source.to_str().unwrap(), "--ignore-integrity"]);
 

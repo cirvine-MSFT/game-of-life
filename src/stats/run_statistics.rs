@@ -1,8 +1,9 @@
 //! Run-level statistics accumulated over the course of a simulation.
 
 use super::advance_outcome::AdvanceOutcome;
+use super::iteration_series::IterationSeries;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunStatistics {
     pub initial_alive_count: u64,
     pub final_alive_count: u64,
@@ -69,6 +70,9 @@ pub struct RunStatisticsCollector {
     total_births: u64,
     total_deaths: u64,
     iterations_run: u64,
+    alive_series: Vec<u64>,
+    births_series: Vec<u64>,
+    deaths_series: Vec<u64>,
 }
 
 impl RunStatisticsCollector {
@@ -83,10 +87,32 @@ impl RunStatisticsCollector {
             total_births: 0,
             total_deaths: 0,
             iterations_run: 0,
+            alive_series: vec![initial_alive_count],
+            births_series: vec![0],
+            deaths_series: vec![0],
         }
     }
 
     pub fn from_statistics(statistics: &RunStatistics) -> Self {
+        // A finalized summary cannot reconstruct every generation; this
+        // synthetic shape preserves endpoint/totals invariants only. Callers
+        // that need exact persistence-series data must keep the original
+        // collector.
+        let series_len = statistics
+            .iterations_run
+            .try_into()
+            .ok()
+            .and_then(|iterations: usize| iterations.checked_add(1))
+            .unwrap_or(1);
+        let mut alive_series = vec![statistics.final_alive_count; series_len];
+        alive_series[0] = statistics.initial_alive_count;
+        let mut births_series = vec![0; series_len];
+        let mut deaths_series = vec![0; series_len];
+        if series_len > 1 {
+            let last = series_len - 1;
+            births_series[last] = statistics.total_births;
+            deaths_series[last] = statistics.total_deaths;
+        }
         Self {
             initial_alive_count: statistics.initial_alive_count,
             final_alive_count: statistics.final_alive_count,
@@ -97,6 +123,9 @@ impl RunStatisticsCollector {
             total_births: statistics.total_births,
             total_deaths: statistics.total_deaths,
             iterations_run: statistics.iterations_run,
+            alive_series,
+            births_series,
+            deaths_series,
         }
     }
 
@@ -105,6 +134,9 @@ impl RunStatisticsCollector {
         self.total_births += outcome.births;
         self.total_deaths += outcome.deaths;
         self.final_alive_count = outcome.alive_count;
+        self.alive_series.push(outcome.alive_count);
+        self.births_series.push(outcome.births);
+        self.deaths_series.push(outcome.deaths);
         if outcome.alive_count > self.peak_alive_count {
             self.peak_alive_count = outcome.alive_count;
             self.peak_alive_generation = self.iterations_run;
@@ -124,7 +156,7 @@ impl RunStatisticsCollector {
     }
 
     pub fn finalize(self, status: RunStatus) -> RunStatistics {
-        self.finalize_with_cycle(status, None)
+        self.finalize_with_series(status, None).0
     }
 
     pub fn finalize_with_cycle(
@@ -132,7 +164,15 @@ impl RunStatisticsCollector {
         status: RunStatus,
         cycle: Option<CycleStatistics>,
     ) -> RunStatistics {
-        RunStatistics {
+        self.finalize_with_series(status, cycle).0
+    }
+
+    pub fn finalize_with_series(
+        self,
+        status: RunStatus,
+        cycle: Option<CycleStatistics>,
+    ) -> (RunStatistics, IterationSeries) {
+        let stats = RunStatistics {
             initial_alive_count: self.initial_alive_count,
             final_alive_count: self.final_alive_count,
             peak_alive_count: self.peak_alive_count,
@@ -144,6 +184,12 @@ impl RunStatisticsCollector {
             iterations_run: self.iterations_run,
             status,
             cycle,
-        }
+        };
+        let series = IterationSeries {
+            alive: self.alive_series,
+            births: self.births_series,
+            deaths: self.deaths_series,
+        };
+        (stats, series)
     }
 }

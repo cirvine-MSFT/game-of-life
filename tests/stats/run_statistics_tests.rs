@@ -96,6 +96,22 @@ fn collector_can_resume_from_finalized_statistics() {
 }
 
 #[test]
+fn collector_resumed_from_statistics_keeps_series_shape_valid() {
+    let mut collector = RunStatisticsCollector::starting_from(3);
+    collector.record(AdvanceOutcome::from_counts(2, 1, 4));
+    let stats = collector.finalize(RunStatus::MaxIterations);
+
+    let mut resumed = RunStatisticsCollector::from_statistics(&stats);
+    resumed.record(AdvanceOutcome::from_counts(1, 2, 3));
+    let (resumed_stats, series) = resumed.finalize_with_series(RunStatus::MaxIterations, None);
+
+    assert_eq!(series.alive[0], resumed_stats.initial_alive_count);
+    assert_eq!(series.births[0], 0);
+    assert_eq!(series.deaths[0], 0);
+    assert_eq!(series.len(), resumed_stats.iterations_run as usize + 1);
+}
+
+#[test]
 fn terminal_status_prioritizes_extinction_over_stability() {
     let extinct = AdvanceOutcome::from_counts(0, 0, 0);
     assert_eq!(

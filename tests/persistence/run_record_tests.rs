@@ -10,7 +10,7 @@ use game_of_life::persistence::{
     board_grid_hash, extract_board_from_run, read_run_record, read_run_record_with_warnings,
     write_run_record, ContentHashMode, ExtractWhich, RunId, RunRecord, RunRecordConfig,
     RunRecordReadError, RunRecordResult, RunRecordWriteError, BOARD_SNAPSHOT_MAGIC,
-    DEFAULT_MAX_INPUT_FILE_BYTES, SCHEMA_VERSION, TOOL_VERSION,
+    DEFAULT_MAX_INPUT_FILE_BYTES, RUN_RECORD_SCHEMA_VERSION, TOOL_VERSION,
 };
 use game_of_life::{BoardSize, CellState, InMemoryBoard};
 
@@ -46,7 +46,7 @@ fn fixture_record() -> RunRecord {
     let final_hash = board_grid_hash(&final_);
     RunRecord {
         run_id,
-        schema_version: SCHEMA_VERSION,
+        schema_version: RUN_RECORD_SCHEMA_VERSION,
         created_at: UNIX_EPOCH + Duration::from_secs(1_780_000_000),
         tool_version: TOOL_VERSION.to_string(),
         config: RunRecordConfig {
@@ -76,6 +76,7 @@ fn fixture_record() -> RunRecord {
             initial_board_hash: initial_hash,
             final_board_hash: final_hash,
         },
+        series: None,
         initial_board: initial,
         final_board: final_,
     }
