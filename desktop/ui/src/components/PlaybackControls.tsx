@@ -77,6 +77,7 @@ export const PlaybackControls = () => {
   const step = useStore((s) => s.step);
   const restart = useStore((s) => s.restart);
   const editBoard = useStore((s) => s.editBoard);
+  const setActiveView = useStore((s) => s.setActiveView);
   const jumpTo = useStore((s) => s.jumpTo);
   const finalStats = useStore((s) => s.finalStats);
   const [gps, setGps] = useState(5);
@@ -170,11 +171,23 @@ export const PlaybackControls = () => {
             </ToolbarButton>
           </Tooltip>
 
-          <Tooltip content="Return to Setup mode (Esc)" relationship="label">
+          <Tooltip
+            content="Return the board to setup and open the Edit pane (Esc)"
+            relationship="label"
+          >
             <ToolbarButton
               icon={<CursorRegular />}
               disabled={!canEdit}
-              onClick={() => void editBoard()}
+              onClick={() => {
+                // Two-step intent: cancel any in-flight playback so the
+                // session is back in setup mode, then hand off to the Edit
+                // destination so the user lands in the place actually
+                // designed for editing rather than inline inside Run.
+                void (async () => {
+                  await editBoard();
+                  setActiveView("edit");
+                })();
+              }}
             >
               Edit Board
             </ToolbarButton>
