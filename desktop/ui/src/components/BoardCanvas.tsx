@@ -22,6 +22,7 @@ const useStyles = makeStyles({
 
 interface BoardCanvasProps {
   paletteName: PaletteName;
+  readOnly?: boolean;
 }
 
 interface DragState {
@@ -46,7 +47,7 @@ const TRANSITION_DURATION_MS = 550;
  * Renders the current board onto a Canvas 2D surface and wires pointer
  * events for click + drag-paint when the session is in Setup mode.
  */
-export const BoardCanvas = ({ paletteName }: BoardCanvasProps) => {
+export const BoardCanvas = ({ paletteName, readOnly = false }: BoardCanvasProps) => {
   const styles = useStyles();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -168,7 +169,7 @@ export const BoardCanvas = ({ paletteName }: BoardCanvasProps) => {
     return () => observer.disconnect();
   }, []);
 
-  const editable = sessionMode === "setup";
+  const editable = sessionMode === "setup" && !readOnly;
 
   const cellAt = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;

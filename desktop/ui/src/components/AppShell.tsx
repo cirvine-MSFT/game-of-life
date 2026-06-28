@@ -10,9 +10,9 @@ import {
 import { NavRail } from "./NavRail";
 import {
   AggregatePanePlaceholder,
-  EditPanePlaceholder,
   RunPanePlaceholder,
 } from "../panes/PanePlaceholders";
+import { EditPane } from "../panes/EditPane";
 import { SettingsPane } from "../panes/SettingsPane";
 import { useStore, type ActiveView } from "../state/store";
 
@@ -59,7 +59,7 @@ const useStyles = makeStyles({
 const paneFor = (view: ActiveView) => {
   switch (view) {
     case "edit":
-      return <EditPanePlaceholder />;
+      return <EditPane />;
     case "run":
       return <RunPanePlaceholder />;
     case "aggregate":
@@ -72,7 +72,7 @@ const paneFor = (view: ActiveView) => {
     // defensively rather than throwing.
     case "telemetry":
     default:
-      return <EditPanePlaceholder />;
+      return <EditPane />;
   }
 };
 

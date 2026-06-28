@@ -31,7 +31,7 @@ afterEach(resetStore);
 describe("AppShell nav rail", () => {
   it("defaults to the Edit pane on first render", () => {
     render(<App />);
-    expect(screen.getByLabelText("Edit board placeholder")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Edit board" })).toBeInTheDocument();
   });
 
   it("switches the active pane when a rail tab is clicked", async () => {
