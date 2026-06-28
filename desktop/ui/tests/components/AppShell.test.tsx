@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { App } from "../App";
-import { useStore } from "../state/store";
+import { App } from "../../src/App";
+import { useStore } from "../../src/state/store";
 
 const resetStore = () => {
   useStore.setState({

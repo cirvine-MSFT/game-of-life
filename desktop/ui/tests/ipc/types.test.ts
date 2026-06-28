@@ -5,7 +5,7 @@ import {
   type BoardPayload,
   type IpcRunSeries,
   type SessionInfo,
-} from "./types";
+} from "../../src/ipc/types";
 
 describe("decodeBoard", () => {
   it("round-trips a small board through base64", () => {

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { ChatPanel } from "./ChatPanel";
-import { AiNotImplementedError } from "./errors";
+import { ChatPanel } from "../../src/ai/ChatPanel";
+import { AiNotImplementedError } from "../../src/ai/errors";
 
 describe("ChatPanel", () => {
   it("shows the empty hint until the user sends a prompt", () => {

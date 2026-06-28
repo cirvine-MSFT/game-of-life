@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import type { IpcRunSeries, IpcRunStatistics } from "../ipc";
+import type { IpcRunSeries, IpcRunStatistics } from "../../src/ipc";
 
 vi.mock("recharts", () => ({
   ResponsiveContainer: ({ children }: { children?: ReactNode }) => (
@@ -37,17 +37,17 @@ vi.mock("recharts", () => ({
   Legend: () => <div data-testid="legend" />,
 }));
 
-vi.mock("../ipc", async () => {
-  const actual = await vi.importActual<typeof import("../ipc")>("../ipc");
+vi.mock("../../src/ipc", async () => {
+  const actual = await vi.importActual<typeof import("../../src/ipc")>("../../src/ipc");
   return {
     ...actual,
     readRunSeries: vi.fn(),
   };
 });
 
-import * as ipc from "../ipc";
-import { AggregatePane } from "./AggregatePane";
-import { useStore, type AggregateRow } from "../state/store";
+import * as ipc from "../../src/ipc";
+import { AggregatePane } from "../../src/panes/AggregatePane";
+import { useStore, type AggregateRow } from "../../src/state/store";
 
 const summary: IpcRunStatistics = {
   initialAliveCount: 3,

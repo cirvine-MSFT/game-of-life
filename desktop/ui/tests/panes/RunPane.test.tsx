@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import type { IpcRunSeries, IpcRunStatistics, SessionInfo } from "../ipc";
+import type { IpcRunSeries, IpcRunStatistics, SessionInfo } from "../../src/ipc";
 
 const dialog = vi.hoisted(() => ({
   open: vi.fn(),
@@ -10,9 +10,9 @@ const dialog = vi.hoisted(() => ({
   message: vi.fn(),
 }));
 
-vi.mock("../ipc", async () => {
+vi.mock("../../src/ipc", async () => {
   const actual =
-    await vi.importActual<typeof import("../ipc")>("../ipc");
+    await vi.importActual<typeof import("../../src/ipc")>("../../src/ipc");
   return {
     ...actual,
     getSession: vi.fn(),
@@ -37,9 +37,9 @@ vi.mock("../ipc", async () => {
 
 vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 
-import * as ipc from "../ipc";
-import { RunPane } from "./RunPane";
-import { useStore } from "../state/store";
+import * as ipc from "../../src/ipc";
+import { RunPane } from "../../src/panes/RunPane";
+import { useStore } from "../../src/state/store";
 
 const baseSession: SessionInfo = {
   mode: "setup",

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-import { App } from "./App";
-import { useStore } from "./state/store";
+import { App } from "../src/App";
+import { useStore } from "../src/state/store";
 
 // The detailed pane-by-pane assertions that used to live in this file
 // (covering the old right-side ToolsPanel, Files tab, terminal-state

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { IpcRunStatistics, SessionInfo } from "../ipc";
+import type { IpcRunStatistics, SessionInfo } from "../../src/ipc";
 import {
   cycleInfoFromStats,
   formatTerminalStatus,
   formatTerminalStatusFromSession,
   formatTerminalStatusFromStats,
-} from "./terminalStatus";
+} from "../../src/state/terminalStatus";
 
 const baseStats: IpcRunStatistics = {
   initialAliveCount: 3,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BoardTick, IpcRunSeries, IpcRunStatistics, SessionInfo } from "../ipc";
+import type { BoardTick, IpcRunSeries, IpcRunStatistics, SessionInfo } from "../../src/ipc";
 
 const dialog = vi.hoisted(() => ({
   open: vi.fn(),
@@ -12,9 +12,9 @@ const dialog = vi.hoisted(() => ({
 // We mock the entire IPC module so the store can be exercised without a
 // Tauri runtime. The setup file already mocks @tauri-apps/api/core +
 // /event, but we need finer control here.
-vi.mock("../ipc", async () => {
+vi.mock("../../src/ipc", async () => {
   const actual =
-    await vi.importActual<typeof import("../ipc")>("../ipc");
+    await vi.importActual<typeof import("../../src/ipc")>("../../src/ipc");
   return {
     ...actual,
     getSession: vi.fn(),
@@ -54,8 +54,8 @@ vi.mock("../ipc", async () => {
 
 vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 
-import * as ipc from "../ipc";
-import { useStore, loadPersistedActiveView } from "./store";
+import * as ipc from "../../src/ipc";
+import { useStore, loadPersistedActiveView } from "../../src/state/store";
 
 const setupSession: SessionInfo = {
   mode: "setup",

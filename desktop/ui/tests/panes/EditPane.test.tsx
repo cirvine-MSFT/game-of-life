@@ -3,9 +3,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 
-import { EditPane } from "./EditPane";
-import type { SessionInfo } from "../ipc";
-import { useStore } from "../state/store";
+import { EditPane } from "../../src/panes/EditPane";
+import type { SessionInfo } from "../../src/ipc";
+import { useStore } from "../../src/state/store";
 
 const baseSession: SessionInfo = {
   mode: "setup",
