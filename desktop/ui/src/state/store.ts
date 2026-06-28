@@ -53,6 +53,57 @@ import {
 
 export type ThemeChoice = "light" | "dark" | "highContrast" | "system";
 
+export type ActiveView =
+  | "edit"
+  | "run"
+  | "aggregate"
+  | "settings"
+  | "telemetry";
+
+const ACTIVE_VIEW_STORAGE_KEY = "gol.activeView";
+const VALID_PERSISTED_VIEWS: readonly ActiveView[] = [
+  "edit",
+  "run",
+  "aggregate",
+  "settings",
+];
+
+// "telemetry" is part of the type so a future pane can be wired up by
+// flipping the disabled flag on its nav-rail tab, but it doesn't render
+// today. Coerce any persisted "telemetry" (or any unknown value) back to
+// "edit" so the user can never boot into an unreachable view.
+//
+// Exported so tests can exercise the coercion without needing to spin up
+// a fresh module instance via `vi.resetModules` + dynamic import.
+export const loadPersistedActiveView = (): ActiveView => {
+  try {
+    const raw =
+      typeof localStorage !== "undefined"
+        ? localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY)
+        : null;
+    if (raw && (VALID_PERSISTED_VIEWS as readonly string[]).includes(raw)) {
+      return raw as ActiveView;
+    }
+  } catch {
+    // localStorage can throw in restricted contexts; fall through to default.
+  }
+  return "edit";
+};
+
+const persistActiveView = (view: ActiveView): void => {
+  try {
+    if (typeof localStorage === "undefined") return;
+    if (view === "telemetry") {
+      // Don't persist a value we'd just coerce away on load.
+      localStorage.removeItem(ACTIVE_VIEW_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, view);
+  } catch {
+    // Persistence is best-effort; swallow.
+  }
+};
+
 interface TickSummary {
   iteration: number;
   alive: number;
@@ -70,6 +121,7 @@ interface AppState {
   jumpProgress: JumpProgress | null;
   finalStats: IpcRunStatistics | null;
   theme: ThemeChoice;
+  activeView: ActiveView;
   connected: boolean;
   initError: string | null;
 
@@ -100,6 +152,9 @@ interface AppState {
 
   // Settings
   setTheme: (theme: ThemeChoice) => void;
+
+  // Navigation
+  setActiveView: (view: ActiveView) => void;
 
   // Persistence
   loadBoardSnapshot: () => Promise<void>;
@@ -142,6 +197,7 @@ export const useStore = create<AppState>((set, get) => ({
   jumpProgress: null,
   finalStats: null,
   theme: "light",
+  activeView: loadPersistedActiveView(),
   connected: false,
   initError: null,
 
@@ -332,6 +388,16 @@ export const useStore = create<AppState>((set, get) => ({
 
   setTheme: (theme) => {
     set({ theme });
+  },
+
+  setActiveView: (view) => {
+    // Telemetry is reserved as a future destination; the nav-rail tab is
+    // disabled, so this branch isn't reachable from normal UI. Tests or
+    // external callers that set it will be coerced down to "edit" on the
+    // next reload anyway; for symmetry, drop the persisted value here too
+    // rather than letting it linger in localStorage.
+    persistActiveView(view);
+    set({ activeView: view });
   },
 
   loadBoardSnapshot: async () => {

@@ -54,7 +54,7 @@ vi.mock("../ipc", async () => {
 vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 
 import * as ipc from "../ipc";
-import { useStore } from "./store";
+import { useStore, loadPersistedActiveView } from "./store";
 
 const setupSession: SessionInfo = {
   mode: "setup",
@@ -117,9 +117,15 @@ const resetStore = () => {
     jumpProgress: null,
     finalStats: null,
     theme: "light",
+    activeView: "edit",
     connected: false,
     initError: null,
   });
+  try {
+    localStorage.clear();
+  } catch {
+    // jsdom may throw in restricted modes; ignore.
+  }
 };
 
 beforeEach(() => {
@@ -243,6 +249,49 @@ describe("setTheme()", () => {
     useStore.getState().setTheme("dark");
     expect(useStore.getState().theme).toBe("dark");
     expect(ipc.getSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("setActiveView()", () => {
+  it("updates the active view and persists known destinations to localStorage", () => {
+    useStore.getState().setActiveView("aggregate");
+    expect(useStore.getState().activeView).toBe("aggregate");
+    expect(localStorage.getItem("gol.activeView")).toBe("aggregate");
+
+    useStore.getState().setActiveView("run");
+    expect(localStorage.getItem("gol.activeView")).toBe("run");
+  });
+
+  it("does not persist the telemetry destination so a coerced reload lands on edit", () => {
+    // Simulate a future caller wiring up telemetry; we don't expose this in
+    // the rail today, but the store still accepts it.
+    useStore.getState().setActiveView("aggregate");
+    useStore.getState().setActiveView("telemetry");
+
+    expect(useStore.getState().activeView).toBe("telemetry");
+    expect(localStorage.getItem("gol.activeView")).toBeNull();
+  });
+});
+
+describe("loadPersistedActiveView()", () => {
+  it("returns the persisted value when it is a recognized destination", () => {
+    localStorage.setItem("gol.activeView", "aggregate");
+    expect(loadPersistedActiveView()).toBe("aggregate");
+  });
+
+  it("coerces the telemetry destination to edit on load", () => {
+    localStorage.setItem("gol.activeView", "telemetry");
+    expect(loadPersistedActiveView()).toBe("edit");
+  });
+
+  it("coerces unknown destinations to edit", () => {
+    localStorage.setItem("gol.activeView", "not-a-pane");
+    expect(loadPersistedActiveView()).toBe("edit");
+  });
+
+  it("defaults to edit when nothing is persisted", () => {
+    localStorage.removeItem("gol.activeView");
+    expect(loadPersistedActiveView()).toBe("edit");
   });
 });
 
