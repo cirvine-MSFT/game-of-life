@@ -239,7 +239,7 @@ describe("RunPane", () => {
   });
 
   describe("Max iterations field", () => {
-    it("calls extendMaxIterations when Apply is clicked with a new value", async () => {
+    it("commits a new value to extendMaxIterations when the input loses focus", async () => {
       const user = userEvent.setup();
       resetStore(baseSession);
       const extendMaxIterations = vi.fn().mockResolvedValue(undefined);
@@ -250,36 +250,74 @@ describe("RunPane", () => {
       const input = screen.getByLabelText("Max iterations");
       await user.clear(input);
       await user.type(input, "250");
-      await user.click(screen.getByRole("button", { name: "Apply" }));
+      // Tabbing away is the natural "I'm done editing" gesture; no
+      // Apply button needed.
+      await user.tab();
 
       expect(extendMaxIterations).toHaveBeenCalledWith(250);
     });
 
-    it("disables Apply when the input matches the current max", () => {
-      resetStore({ ...baseSession, maxIterations: 100 });
+    it("commits on Enter without leaving the field", async () => {
+      const user = userEvent.setup();
+      resetStore(baseSession);
+      const extendMaxIterations = vi.fn().mockResolvedValue(undefined);
+      useStore.setState({ extendMaxIterations });
+
       render(<RunPane />);
 
-      // Default input value is the current max, so Apply has nothing to do.
-      expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+      const input = screen.getByLabelText("Max iterations");
+      await user.clear(input);
+      await user.type(input, "300{Enter}");
+
+      expect(extendMaxIterations).toHaveBeenCalledWith(300);
     });
 
-    it("disables Apply when the new total is below the current iteration", async () => {
+    it("does nothing when the typed value equals the current max", async () => {
       const user = userEvent.setup();
-      // Backend rejects new_total < iteration; the UI mirrors that so the
-      // user gets immediate visual feedback instead of a thrown error.
+      resetStore({ ...baseSession, maxIterations: 100 });
+      const extendMaxIterations = vi.fn().mockResolvedValue(undefined);
+      useStore.setState({ extendMaxIterations });
+
+      render(<RunPane />);
+
+      const input = screen.getByLabelText("Max iterations");
+      await user.clear(input);
+      await user.type(input, "100");
+      await user.tab();
+
+      expect(extendMaxIterations).not.toHaveBeenCalled();
+    });
+
+    it("snaps the input back when the typed value is below the current iteration", async () => {
+      const user = userEvent.setup();
+      // Backend rejects new_total < iteration; rather than firing the
+      // request and surfacing the error, the input snaps back so the
+      // user sees the rejection immediately.
       resetStore({
         ...baseSession,
         mode: "paused",
         iteration: 50,
         maxIterations: 100,
       });
+      const extendMaxIterations = vi.fn().mockResolvedValue(undefined);
+      useStore.setState({ extendMaxIterations });
+
       render(<RunPane />);
 
       const input = screen.getByLabelText("Max iterations");
       await user.clear(input);
       await user.type(input, "25");
+      await user.tab();
 
-      expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+      expect(extendMaxIterations).not.toHaveBeenCalled();
+      expect(input).toHaveValue(100);
+    });
+
+    it("is disabled while a run is actively progressing", () => {
+      resetStore({ ...baseSession, mode: "playing", iteration: 5 });
+      render(<RunPane />);
+
+      expect(screen.getByLabelText("Max iterations")).toBeDisabled();
     });
 
     it("re-syncs the input when the session's max iterations changes externally", async () => {

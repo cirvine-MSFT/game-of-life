@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   Badge,
-  Button,
   Caption1,
   Field,
   Input,
@@ -78,12 +77,7 @@ const useStyles = makeStyles({
     minWidth: "140px",
     gap: tokens.spacingVerticalXS,
   },
-  maxIterRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: tokens.spacingHorizontalXS,
-  },
-  maxIterInput: { width: "92px" },
+  maxIterInput: { width: "120px" },
   note: {
     color: tokens.colorNeutralForeground3,
   },
@@ -121,25 +115,33 @@ export const RunPane = () => {
     setMaxIterInput(String(sessionMaxIter));
   }, [sessionMaxIter]);
 
-  const parsedMaxIter = (() => {
-    const trimmed = maxIterInput.trim();
-    if (trimmed === "") return null;
-    const n = Number.parseInt(trimmed, 10);
-    return Number.isFinite(n) ? n : null;
-  })();
-  // Backend rejects new_total < current iteration to avoid corrupting
-  // the series. Mirror that limit in the UI so Apply doesn't fire and
-  // immediately surface an error.
-  const minAllowedMax = Math.max(1, sessionIter);
-  const canApplyMax =
-    session !== null &&
-    parsedMaxIter !== null &&
-    parsedMaxIter >= minAllowedMax &&
-    parsedMaxIter !== sessionMaxIter;
+  // Field is read-only while a run is actively progressing. The backend
+  // would accept the change (the user could still raise the cap mid-run)
+  // but the UX cost — accidentally bumping the cap with a stray click
+  // while the simulation flies past — outweighs the benefit. Pause first,
+  // then edit.
+  const maxIterEditable =
+    !!session &&
+    session.mode !== "playing" &&
+    session.mode !== "jumpingTo";
 
-  const applyMaxIter = () => {
-    if (!canApplyMax || parsedMaxIter === null) return;
-    void extendMaxIterations(parsedMaxIter);
+  const commitMaxIter = () => {
+    const trimmed = maxIterInput.trim();
+    const parsed = trimmed === "" ? NaN : Number.parseInt(trimmed, 10);
+    const minAllowed = Math.max(1, sessionIter);
+    // Anything that fails validation snaps the input back to the live
+    // session value rather than silently swallowing the typed digits —
+    // that way the user sees the rejection instead of starting a run
+    // with a stale cap.
+    if (!Number.isFinite(parsed) || parsed < minAllowed) {
+      setMaxIterInput(String(sessionMaxIter));
+      return;
+    }
+    if (parsed === sessionMaxIter) {
+      return;
+    }
+    setMaxIterInput(String(parsed));
+    void extendMaxIterations(parsed);
   };
 
   return (
@@ -159,31 +161,28 @@ export const RunPane = () => {
           <ToolbarDivider />
           <Field
             className={styles.maxIterField}
-            label={`Max iterations${sessionMaxIter ? ` (current ${sessionMaxIter})` : ""}`}
+            label="Max iterations"
+            hint={
+              maxIterEditable
+                ? undefined
+                : "Pause the run to change the cap."
+            }
           >
-            <div className={styles.maxIterRow}>
-              <Input
-                className={styles.maxIterInput}
-                aria-label="Max iterations"
-                type="number"
-                min={minAllowedMax}
-                value={maxIterInput}
-                disabled={!session}
-                onChange={(_, data) => setMaxIterInput(data.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    applyMaxIter();
-                  }
-                }}
-              />
-              <Button
-                appearance="secondary"
-                disabled={!canApplyMax}
-                onClick={applyMaxIter}
-              >
-                Apply
-              </Button>
-            </div>
+            <Input
+              className={styles.maxIterInput}
+              aria-label="Max iterations"
+              type="number"
+              min={Math.max(1, sessionIter)}
+              value={maxIterInput}
+              disabled={!maxIterEditable}
+              onChange={(_, data) => setMaxIterInput(data.value)}
+              onBlur={commitMaxIter}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.blur();
+                }
+              }}
+            />
           </Field>
         </Toolbar>
 
