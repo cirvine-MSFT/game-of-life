@@ -35,10 +35,12 @@ const resetStore = (session: SessionInfo | null = baseSession) => {
     latestTick: null,
     jumpProgress: null,
     finalStats: null,
+    loadedReference: null,
     theme: "light",
     activeView: "edit",
     connected: false,
     initError: null,
+    aggregateRows: [],
   });
   vi.mocked(invoke).mockClear();
 };

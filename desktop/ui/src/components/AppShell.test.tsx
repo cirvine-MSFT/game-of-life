@@ -13,6 +13,7 @@ const resetStore = () => {
     latestTick: null,
     jumpProgress: null,
     finalStats: null,
+    loadedReference: null,
     theme: "light",
     activeView: "edit",
     connected: false,
@@ -39,7 +40,7 @@ describe("AppShell nav rail", () => {
     render(<App />);
 
     await user.click(screen.getByRole("tab", { name: "Run" }));
-    expect(screen.getByLabelText("Run placeholder")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Run" })).toBeInTheDocument();
     expect(useStore.getState().activeView).toBe("run");
 
     await user.click(

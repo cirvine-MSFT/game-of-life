@@ -72,8 +72,9 @@ export const StatsPanel = () => {
   const session = useStore((s) => s.session);
   const finalStats = useStore((s) => s.finalStats);
 
+  const generation = session?.iteration ?? 0;
   const series = prepareSeries(history);
-  const alive = latestTick?.alive ?? history[history.length - 1] ?? 0;
+  const alive = latestTick?.alive ?? history[generation] ?? history[history.length - 1] ?? 0;
   const dead = latestTick?.dead;
   const births = latestTick?.births ?? 0;
   const deaths = latestTick?.deaths ?? 0;
@@ -81,7 +82,7 @@ export const StatsPanel = () => {
 
   return (
     <section className={styles.root} aria-label="Statistics panel">
-      <Subtitle2>Generation {session?.iteration ?? 0}</Subtitle2>
+      <Subtitle2>Generation {generation}</Subtitle2>
 
       <div className={styles.metricsGrid}>
         <div className={styles.metric}>

@@ -7,9 +7,7 @@ import {
 } from "@fluentui/react-components";
 
 // Placeholder pane bodies. These exist so AppShell builds and the nav rail
-// has somewhere to render while the dedicated RunPane / AggregatePane todos
-// are in flight. Once each real pane lands it replaces the matching
-// placeholder import here.
+// has somewhere to render while the dedicated AggregatePane todo is in flight.
 
 const useStyles = makeStyles({
   root: {
@@ -37,12 +35,6 @@ const PanePlaceholder = ({ name, body }: Props) => {
   );
 };
 
-export const RunPanePlaceholder = () => (
-  <PanePlaceholder
-    name="Run"
-    body="Load a board or saved run, then watch the simulation play out with full playback controls."
-  />
-);
 
 export const AggregatePanePlaceholder = () => (
   <PanePlaceholder

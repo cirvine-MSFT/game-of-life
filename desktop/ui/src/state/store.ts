@@ -37,6 +37,7 @@ import {
   pause,
   play,
   randomize,
+  readRunSeries,
   restart,
   saveBoardSnapshot,
   setCell,
@@ -112,6 +113,12 @@ interface TickSummary {
   deaths: number;
 }
 
+export interface LoadedReference {
+  path: string;
+  filename: string;
+  summaryOnly: boolean;
+}
+
 interface AppState {
   // Reactive state
   session: SessionInfo | null;
@@ -120,6 +127,7 @@ interface AppState {
   latestTick: TickSummary | null;
   jumpProgress: JumpProgress | null;
   finalStats: IpcRunStatistics | null;
+  loadedReference: LoadedReference | null;
   theme: ThemeChoice;
   activeView: ActiveView;
   connected: boolean;
@@ -159,6 +167,7 @@ interface AppState {
   // Persistence
   loadBoardSnapshot: () => Promise<void>;
   loadRunBoard: (selection: RunBoardSelection) => Promise<void>;
+  loadSavedRun: () => Promise<void>;
   saveBoardSnapshot: () => Promise<void>;
 
   // Tear-down
@@ -196,6 +205,7 @@ export const useStore = create<AppState>((set, get) => ({
   latestTick: null,
   jumpProgress: null,
   finalStats: null,
+  loadedReference: null,
   theme: "light",
   activeView: loadPersistedActiveView(),
   connected: false,
@@ -308,44 +318,84 @@ export const useStore = create<AppState>((set, get) => ({
     await createRun(args);
     await get().refreshSession();
     await get().refreshBoard();
-    set({ history: [], latestTick: null, finalStats: null, jumpProgress: null });
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   setCell: async (x, y, alive) => {
     await setCell(x, y, alive);
     await get().refreshBoard();
     await get().refreshSession();
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   paintCells: async (edits) => {
     await paintCells(edits);
     await get().refreshBoard();
     await get().refreshSession();
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   applyPattern: async (pattern) => {
     await applyPattern(pattern);
     await get().refreshBoard();
     await get().refreshSession();
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   randomize: async (seed, aliveCellsPerThousand) => {
     await randomize(seed, aliveCellsPerThousand);
     await get().refreshBoard();
     await get().refreshSession();
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   clearBoard: async () => {
     await clearBoard();
     await get().refreshBoard();
     await get().refreshSession();
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   startRun: async () => {
     await startRun();
     await get().refreshSession();
-    await get().refreshHistory();
-    set({ finalStats: null });
+    set({ history: [], finalStats: null, loadedReference: null });
   },
 
   play: async (gps) => {
@@ -367,7 +417,7 @@ export const useStore = create<AppState>((set, get) => ({
     await get().refreshBoard();
     await get().refreshHistory();
     await get().refreshSession();
-    set({ finalStats: null, latestTick: null });
+    set({ finalStats: null, loadedReference: null, latestTick: null });
   },
 
   jumpTo: async (target) => {
@@ -383,7 +433,13 @@ export const useStore = create<AppState>((set, get) => ({
   editBoard: async () => {
     await editBoard();
     await get().refreshSession();
-    set({ history: [], latestTick: null, finalStats: null, jumpProgress: null });
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   setTheme: (theme) => {
@@ -439,7 +495,12 @@ export const useStore = create<AppState>((set, get) => ({
     await get().refreshSession();
     await get().refreshBoard();
     await get().refreshHistory();
-    set({ latestTick: null, finalStats: null, jumpProgress: null });
+    set({
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   loadRunBoard: async (selection) => {
@@ -481,7 +542,74 @@ export const useStore = create<AppState>((set, get) => ({
     await get().refreshSession();
     await get().refreshBoard();
     await get().refreshHistory();
-    set({ latestTick: null, finalStats: null, jumpProgress: null });
+    set({
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
+  },
+
+  loadSavedRun: async () => {
+    const { open, ask, message } = await import("@tauri-apps/plugin-dialog");
+    const session = get().session;
+    if (session?.dirty) {
+      const discard = await ask(
+        "The current board has unsaved changes. Discard them and load a saved run?",
+        { title: "Discard unsaved changes?", kind: "warning" },
+      );
+      if (!discard) {
+        return;
+      }
+    }
+
+    const chosen = await open({
+      title: "Load saved run",
+      multiple: false,
+      filters: [{ name: "Game of Life run", extensions: ["gol"] }],
+    });
+    if (!chosen) {
+      return;
+    }
+    const path = Array.isArray(chosen) ? chosen[0] : chosen;
+    if (!path) {
+      return;
+    }
+
+    let runSeries: Awaited<ReturnType<typeof readRunSeries>>;
+    try {
+      runSeries = await readRunSeries(path);
+    } catch (error) {
+      await message(messageFromUnknown(error), {
+        title: "Unable to load saved run",
+        kind: "error",
+      });
+      return;
+    }
+
+    try {
+      await loadRunBoard(path, "initial");
+    } catch (error) {
+      await message(messageFromUnknown(error), {
+        title: "Unable to load saved run",
+        kind: "error",
+      });
+      return;
+    }
+
+    await get().refreshSession();
+    await get().refreshBoard();
+    set({
+      history: runSeries.series?.alive ?? [],
+      finalStats: runSeries.summary,
+      loadedReference: {
+        path: runSeries.path,
+        filename: runSeries.filename,
+        summaryOnly: runSeries.series === null,
+      },
+      latestTick: null,
+      jumpProgress: null,
+    });
   },
 
   saveBoardSnapshot: async () => {

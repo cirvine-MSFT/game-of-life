@@ -230,6 +230,7 @@ export const BoardCanvas = ({ paletteName, readOnly = false }: BoardCanvasProps)
         ref={canvasRef}
         className={styles.canvas}
         style={{ cursor: editable ? "crosshair" : "not-allowed" }}
+        data-readonly={editable ? "false" : "true"}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}

@@ -8,11 +8,9 @@ import {
 } from "@fluentui/react-components";
 
 import { NavRail } from "./NavRail";
-import {
-  AggregatePanePlaceholder,
-  RunPanePlaceholder,
-} from "../panes/PanePlaceholders";
+import { AggregatePanePlaceholder } from "../panes/PanePlaceholders";
 import { EditPane } from "../panes/EditPane";
+import { RunPane } from "../panes/RunPane";
 import { SettingsPane } from "../panes/SettingsPane";
 import { useStore, type ActiveView } from "../state/store";
 
@@ -61,7 +59,7 @@ const paneFor = (view: ActiveView) => {
     case "edit":
       return <EditPane />;
     case "run":
-      return <RunPanePlaceholder />;
+      return <RunPane />;
     case "aggregate":
       return <AggregatePanePlaceholder />;
     case "settings":

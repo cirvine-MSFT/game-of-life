@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BoardTick, IpcRunStatistics, SessionInfo } from "../ipc";
+import type { BoardTick, IpcRunSeries, IpcRunStatistics, SessionInfo } from "../ipc";
 
 const dialog = vi.hoisted(() => ({
   open: vi.fn(),
@@ -26,6 +26,7 @@ vi.mock("../ipc", async () => {
     })),
     getAliveHistory: vi.fn(async () => []),
     getFinalStats: vi.fn(async () => null),
+    readRunSeries: vi.fn(async () => null),
     createRun: vi.fn(async () => undefined),
     setCell: vi.fn(async () => undefined),
     paintCells: vi.fn(async () => undefined),
@@ -106,6 +107,17 @@ const completedStats: IpcRunStatistics = {
   cyclePeriod: null,
 };
 
+const savedRunSeries: IpcRunSeries = {
+  path: "C:\\runs\\saved.gol",
+  filename: "saved.gol",
+  summary: completedStats,
+  series: {
+    alive: [4, 6, 5],
+    births: [0, 3, 1],
+    deaths: [0, 1, 2],
+  },
+};
+
 const resetStore = () => {
   // Zustand stores are module-singletons; reset between tests so
   // ordering doesn't matter.
@@ -116,6 +128,7 @@ const resetStore = () => {
     latestTick: null,
     jumpProgress: null,
     finalStats: null,
+    loadedReference: null,
     theme: "light",
     activeView: "edit",
     connected: false,
@@ -313,6 +326,11 @@ describe("editBoard()", () => {
         iterationsRun: 3,
         status: "extinct",
       },
+      loadedReference: {
+        path: "C:\\runs\\reference.gol",
+        filename: "reference.gol",
+        summaryOnly: false,
+      },
       jumpProgress: { current: 1, target: 10 },
     });
 
@@ -321,15 +339,43 @@ describe("editBoard()", () => {
     expect(useStore.getState().history).toEqual([]);
     expect(useStore.getState().latestTick).toBeNull();
     expect(useStore.getState().finalStats).toBeNull();
+    expect(useStore.getState().loadedReference).toBeNull();
     expect(useStore.getState().jumpProgress).toBeNull();
     expect(ipc.editBoard).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("startRun()", () => {
-  it("clears finalStats and refreshes session + history", async () => {
+describe("setup mutations", () => {
+  it("clear loaded-reference state once the setup board changes", async () => {
     vi.mocked(ipc.getSession).mockResolvedValue(populatedSession);
     useStore.setState({
+      session: populatedSession,
+      history: [4, 6, 5],
+      latestTick: { iteration: 2, alive: 5, dead: 7, births: 1, deaths: 2 },
+      finalStats: completedStats,
+      loadedReference: {
+        path: "C:\\runs\\reference.gol",
+        filename: "reference.gol",
+        summaryOnly: false,
+      },
+      jumpProgress: { current: 1, target: 2 },
+    });
+
+    await useStore.getState().setCell(1, 1, true);
+
+    expect(useStore.getState().history).toEqual([]);
+    expect(useStore.getState().latestTick).toBeNull();
+    expect(useStore.getState().finalStats).toBeNull();
+    expect(useStore.getState().loadedReference).toBeNull();
+    expect(useStore.getState().jumpProgress).toBeNull();
+  });
+});
+
+describe("startRun()", () => {
+  it("clears reference data and refreshes session", async () => {
+    vi.mocked(ipc.getSession).mockResolvedValue(populatedSession);
+    useStore.setState({
+      history: [4, 5, 6],
       finalStats: {
         initialAliveCount: 1,
         finalAliveCount: 0,
@@ -342,13 +388,20 @@ describe("startRun()", () => {
         iterationsRun: 3,
         status: "extinct",
       },
+      loadedReference: {
+        path: "C:\\runs\\reference.gol",
+        filename: "reference.gol",
+        summaryOnly: false,
+      },
     });
 
     await useStore.getState().startRun();
 
     expect(ipc.startRun).toHaveBeenCalledTimes(1);
-    expect(ipc.getAliveHistory).toHaveBeenCalled();
+    expect(ipc.getSession).toHaveBeenCalled();
+    expect(useStore.getState().history).toEqual([]);
     expect(useStore.getState().finalStats).toBeNull();
+    expect(useStore.getState().loadedReference).toBeNull();
   });
 });
 
@@ -370,6 +423,11 @@ describe("newRun()", () => {
         iterationsRun: 3,
         status: "extinct",
       },
+      loadedReference: {
+        path: "C:\\runs\\reference.gol",
+        filename: "reference.gol",
+        summaryOnly: false,
+      },
       jumpProgress: { current: 1, target: 10 },
     });
 
@@ -383,6 +441,7 @@ describe("newRun()", () => {
     expect(useStore.getState().history).toEqual([]);
     expect(useStore.getState().latestTick).toBeNull();
     expect(useStore.getState().finalStats).toBeNull();
+    expect(useStore.getState().loadedReference).toBeNull();
     expect(useStore.getState().jumpProgress).toBeNull();
   });
 });
@@ -407,6 +466,11 @@ describe("loadBoardSnapshot()", () => {
         iterationsRun: 2,
         status: "maxIterations",
       },
+      loadedReference: {
+        path: "C:\\runs\\reference.gol",
+        filename: "reference.gol",
+        summaryOnly: false,
+      },
       jumpProgress: { current: 2, target: 10 },
     });
 
@@ -423,6 +487,7 @@ describe("loadBoardSnapshot()", () => {
     expect(ipc.getAliveHistory).toHaveBeenCalled();
     expect(useStore.getState().latestTick).toBeNull();
     expect(useStore.getState().finalStats).toBeNull();
+    expect(useStore.getState().loadedReference).toBeNull();
     expect(useStore.getState().jumpProgress).toBeNull();
   });
 
@@ -485,6 +550,11 @@ describe("loadRunBoard()", () => {
         iterationsRun: 2,
         status: "maxIterations",
       },
+      loadedReference: {
+        path: "C:\\runs\\reference.gol",
+        filename: "reference.gol",
+        summaryOnly: false,
+      },
       jumpProgress: { current: 2, target: 10 },
     });
 
@@ -501,6 +571,7 @@ describe("loadRunBoard()", () => {
     expect(ipc.getAliveHistory).toHaveBeenCalled();
     expect(useStore.getState().latestTick).toBeNull();
     expect(useStore.getState().finalStats).toBeNull();
+    expect(useStore.getState().loadedReference).toBeNull();
     expect(useStore.getState().jumpProgress).toBeNull();
   });
 
@@ -525,6 +596,80 @@ describe("loadRunBoard()", () => {
     expect(ipc.getBoard).not.toHaveBeenCalled();
   });
 });
+
+describe("loadSavedRun()", () => {
+  it("loads reference series before mutating the backend session", async () => {
+    dialog.open.mockResolvedValueOnce("C:\\runs\\saved.gol");
+    vi.mocked(ipc.readRunSeries).mockResolvedValueOnce(savedRunSeries);
+    vi.mocked(ipc.getSession).mockResolvedValue(populatedSession);
+    useStore.setState({ session: populatedSession });
+
+    await useStore.getState().loadSavedRun();
+
+    expect(dialog.open).toHaveBeenCalledWith({
+      title: "Load saved run",
+      multiple: false,
+      filters: [{ name: "Game of Life run", extensions: ["gol"] }],
+    });
+    expect(ipc.readRunSeries).toHaveBeenCalledWith("C:\\runs\\saved.gol");
+    expect(ipc.loadRunBoard).toHaveBeenCalledWith("C:\\runs\\saved.gol", "initial");
+    expect(useStore.getState().history).toEqual([4, 6, 5]);
+    expect(useStore.getState().finalStats).toEqual(completedStats);
+    expect(useStore.getState().loadedReference).toEqual({
+      path: "C:\\runs\\saved.gol",
+      filename: "saved.gol",
+      summaryOnly: false,
+    });
+  });
+
+  it("shows read errors without mutating session state", async () => {
+    dialog.open.mockResolvedValueOnce("C:\\runs\\bad.gol");
+    vi.mocked(ipc.readRunSeries).mockRejectedValueOnce({
+      kind: "loadRunRecord",
+      message: "content hash mismatch",
+    });
+    useStore.setState({
+      session: populatedSession,
+      history: [1, 2],
+      finalStats: completedStats,
+    });
+
+    await useStore.getState().loadSavedRun();
+
+    expect(dialog.message).toHaveBeenCalledWith("content hash mismatch", {
+      title: "Unable to load saved run",
+      kind: "error",
+    });
+    expect(ipc.loadRunBoard).not.toHaveBeenCalled();
+    expect(ipc.getSession).not.toHaveBeenCalled();
+    expect(useStore.getState().history).toEqual([1, 2]);
+    expect(useStore.getState().finalStats).toEqual(completedStats);
+    expect(useStore.getState().loadedReference).toBeNull();
+  });
+
+  it("marks v1 run records as summary-only", async () => {
+    dialog.open.mockResolvedValueOnce("C:\\runs\\legacy.gol");
+    vi.mocked(ipc.readRunSeries).mockResolvedValueOnce({
+      ...savedRunSeries,
+      path: "C:\\runs\\legacy.gol",
+      filename: "legacy.gol",
+      series: null,
+    });
+    vi.mocked(ipc.getSession).mockResolvedValue(populatedSession);
+    useStore.setState({ session: populatedSession });
+
+    await useStore.getState().loadSavedRun();
+
+    expect(useStore.getState().history).toEqual([]);
+    expect(useStore.getState().finalStats).toEqual(completedStats);
+    expect(useStore.getState().loadedReference).toEqual({
+      path: "C:\\runs\\legacy.gol",
+      filename: "legacy.gol",
+      summaryOnly: true,
+    });
+  });
+});
+
 
 describe("saveBoardSnapshot()", () => {
   it("defaults to the current save path when one exists", async () => {

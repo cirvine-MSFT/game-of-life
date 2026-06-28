@@ -18,10 +18,12 @@ const resetStore = () => {
     latestTick: null,
     jumpProgress: null,
     finalStats: null,
+    loadedReference: null,
     theme: "light",
     activeView: "edit",
     connected: false,
     initError: null,
+    aggregateRows: [],
   });
 };
 
