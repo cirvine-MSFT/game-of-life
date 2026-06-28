@@ -171,11 +171,11 @@ export const RunPane = () => {
             <Input
               className={styles.maxIterInput}
               aria-label="Max iterations"
-              type="number"
-              min={Math.max(1, sessionIter)}
+              type="text"
+              inputMode="numeric"
               value={maxIterInput}
               disabled={!maxIterEditable}
-              onChange={(_, data) => setMaxIterInput(data.value)}
+              onChange={(_, data) => setMaxIterInput(data.value.replace(/\D/g, ""))}
               onBlur={commitMaxIter}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {

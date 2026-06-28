@@ -265,22 +265,20 @@ export const EditPane = () => {
             <Input
               className={styles.sizeInput}
               aria-label="Board width"
-              type="number"
-              min={MIN_BOARD_SIZE}
-              max={MAX_BOARD_SIZE}
+              type="text"
+              inputMode="numeric"
               value={widthInput}
-              onChange={(_, data) => setWidthInput(data.value)}
+              onChange={(_, data) => setWidthInput(data.value.replace(/\D/g, ""))}
               disabled={!inSetup}
             />
             <Body1>×</Body1>
             <Input
               className={styles.sizeInput}
               aria-label="Board height"
-              type="number"
-              min={MIN_BOARD_SIZE}
-              max={MAX_BOARD_SIZE}
+              type="text"
+              inputMode="numeric"
               value={heightInput}
-              onChange={(_, data) => setHeightInput(data.value)}
+              onChange={(_, data) => setHeightInput(data.value.replace(/\D/g, ""))}
               disabled={!inSetup}
             />
             <ToolbarButton disabled={!inSetup} onClick={applySize}>
@@ -330,9 +328,10 @@ export const EditPane = () => {
                       <Input
                         className={styles.seedInput}
                         aria-label="Random seed"
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
                         value={seedInput}
-                        onChange={(_, data) => setSeedInput(data.value)}
+                        onChange={(_, data) => setSeedInput(data.value.replace(/\D/g, ""))}
                       />
                       <Button
                         icon={<ArrowShuffleRegular />}

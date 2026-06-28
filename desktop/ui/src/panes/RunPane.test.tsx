@@ -239,6 +239,25 @@ describe("RunPane", () => {
   });
 
   describe("Max iterations field", () => {
+    it("strips non-digit characters typed into the input", async () => {
+      const user = userEvent.setup();
+      resetStore(baseSession);
+      const extendMaxIterations = vi.fn().mockResolvedValue(undefined);
+      useStore.setState({ extendMaxIterations });
+
+      render(<RunPane />);
+
+      const input = screen.getByLabelText("Max iterations");
+      await user.clear(input);
+      // user.type treats some characters as special (e.g. {Enter}); use
+      // distinct literal non-digits that the parser will reject. The
+      // onChange filter strips them so the field only holds 12345.
+      await user.type(input, "1a2b3c4d5");
+      await user.tab();
+
+      expect(extendMaxIterations).toHaveBeenCalledWith(12345);
+    });
+
     it("commits a new value to extendMaxIterations when the input loses focus", async () => {
       const user = userEvent.setup();
       resetStore(baseSession);
@@ -310,7 +329,7 @@ describe("RunPane", () => {
       await user.tab();
 
       expect(extendMaxIterations).not.toHaveBeenCalled();
-      expect(input).toHaveValue(100);
+      expect(input).toHaveValue("100");
     });
 
     it("is disabled while a run is actively progressing", () => {
@@ -329,7 +348,7 @@ describe("RunPane", () => {
       rerender(<RunPane />);
 
       await waitFor(() => {
-        expect(screen.getByLabelText("Max iterations")).toHaveValue(500);
+        expect(screen.getByLabelText("Max iterations")).toHaveValue("500");
       });
     });
   });
