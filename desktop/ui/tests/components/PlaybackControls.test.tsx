@@ -83,7 +83,7 @@ describe("PlaybackControls Edit Board handoff", () => {
 });
 
 describe("PlaybackControls Play/Pause", () => {
-  it("shows a single Play button in setup mode that starts the run", async () => {
+  it("shows a single Play button in setup mode that starts the run and immediately plays", async () => {
     const user = userEvent.setup();
     useStore.setState({ session: sessionFor({ mode: "setup" }) });
     const startRun = vi.fn().mockResolvedValue(undefined);
@@ -92,17 +92,20 @@ describe("PlaybackControls Play/Pause", () => {
 
     render(<PlaybackControls />);
 
-    // No separate Start button — the same Play button handles both
-    // "kick off a new run" (setup) and "resume" (paused).
-    expect(
-      screen.queryByRole("button", { name: /Start the simulation/i }),
-    ).toHaveAccessibleName(/Start the simulation/);
     await user.click(
       screen.getByRole("button", { name: /Start the simulation/i }),
     );
 
+    // One click runs both: start_run leaves the backend in paused mode
+    // with the initial board ready, then play kicks off the actual
+    // generation loop. Two separate clicks would force the user through
+    // a visible Paused step, which contradicts the "Play means play"
+    // mental model.
     expect(startRun).toHaveBeenCalledTimes(1);
-    expect(play).not.toHaveBeenCalled();
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(startRun.mock.invocationCallOrder[0]).toBeLessThan(
+      play.mock.invocationCallOrder[0],
+    );
   });
 
   it("uses Play to resume from paused", async () => {

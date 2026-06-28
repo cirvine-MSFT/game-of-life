@@ -111,11 +111,16 @@ export const PlaybackControls = () => {
       void pause();
       return;
     }
-    if (inSetup) {
-      void startRun();
-      return;
-    }
-    void play(gps);
+    // From setup, the backend's start_run lands in paused mode with the
+    // initial board ready — so the user would otherwise see the toolbar
+    // shift to "Paused" and have to click Play a second time. Chain the
+    // two calls so a single click on Play in setup just starts playing.
+    void (async () => {
+      if (inSetup) {
+        await startRun();
+      }
+      await play(gps);
+    })();
   };
 
   const terminal = formatTerminalStatusFromSession(session, finalStats);
