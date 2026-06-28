@@ -1,9 +1,5 @@
 # Product
 
-## Register
-
-product
-
 ## Users
 
 Researchers, educators, students, and developers use this project locally to explore Conway's Game of Life, inspect saved runs, and discuss implementation tradeoffs in interview or learning contexts. The desktop UI serves users who want to edit boards, run simulations, and compare saved run records without switching back to the CLI.
