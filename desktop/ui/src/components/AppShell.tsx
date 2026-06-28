@@ -12,8 +12,8 @@ import {
   AggregatePanePlaceholder,
   EditPanePlaceholder,
   RunPanePlaceholder,
-  SettingsPanePlaceholder,
 } from "../panes/PanePlaceholders";
+import { SettingsPane } from "../panes/SettingsPane";
 import { useStore, type ActiveView } from "../state/store";
 
 const useStyles = makeStyles({
@@ -65,7 +65,7 @@ const paneFor = (view: ActiveView) => {
     case "aggregate":
       return <AggregatePanePlaceholder />;
     case "settings":
-      return <SettingsPanePlaceholder />;
+      return <SettingsPane />;
     // Telemetry is reachable only via a disabled rail tab; the store's
     // persistence load also coerces "telemetry" to "edit" so this branch is
     // effectively unreachable at runtime. Render the Edit placeholder

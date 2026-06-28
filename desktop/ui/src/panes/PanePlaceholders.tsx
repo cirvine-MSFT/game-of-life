@@ -58,9 +58,3 @@ export const AggregatePanePlaceholder = () => (
   />
 );
 
-export const SettingsPanePlaceholder = () => (
-  <PanePlaceholder
-    name="Settings"
-    body="Theme and (eventually) more app-wide preferences."
-  />
-);
