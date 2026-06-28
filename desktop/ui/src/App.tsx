@@ -5,7 +5,6 @@ import {
   teamsHighContrastTheme,
 } from "@fluentui/react-components";
 
-import { Shell } from "./components/Shell";
 import { AppShell } from "./components/AppShell";
 import { useStore } from "./state/store";
 
@@ -36,8 +35,3 @@ export const App = () => {
     </FluentProvider>
   );
 };
-
-// Re-export the legacy Shell so callers (and the old App.test.tsx during
-// the migration) can still reach it. Removed by the cleanup-tests-lint
-// task once every pane has shipped.
-export { Shell };
