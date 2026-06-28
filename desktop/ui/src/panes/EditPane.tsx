@@ -3,6 +3,7 @@ import {
   Body1,
   Button,
   Caption1,
+  Field,
   Input,
   Menu,
   MenuItem,
@@ -15,6 +16,7 @@ import {
   Popover,
   PopoverSurface,
   PopoverTrigger,
+  Slider,
   Subtitle2,
   Toolbar,
   ToolbarButton,
@@ -22,6 +24,7 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
+import { ArrowShuffleRegular } from "@fluentui/react-icons";
 
 import { ChatPanel } from "../ai/ChatPanel";
 import { generateBoardFromPrompt } from "../ai/aiClient";
@@ -33,6 +36,24 @@ const MIN_BOARD_SIZE = 1;
 const MAX_BOARD_SIZE = 500;
 const MIN_ALIVE_PER_THOUSAND = 0;
 const MAX_ALIVE_PER_THOUSAND = 1000;
+
+// Density is shown to the user as a 0–100% slider but the backend's
+// randomize command speaks in alive-cells-per-thousand (0–1000). Pick a
+// sensible default of 20% live so newly-randomized boards have enough
+// activity to look interesting.
+const DEFAULT_DENSITY_PERCENT = 20;
+const densityPercentToPerThousand = (percent: number): number =>
+  clamp(
+    Math.round(percent * 10),
+    MIN_ALIVE_PER_THOUSAND,
+    MAX_ALIVE_PER_THOUSAND,
+  );
+
+// 64-bit seed space. Math.random gives 53 bits which is plenty for a
+// "shuffle" button — researchers who care about exact reproducibility
+// can paste a specific seed in.
+const randomSeed = (): number =>
+  Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 
 const useStyles = makeStyles({
   root: {
@@ -99,12 +120,21 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: tokens.spacingVerticalM,
-    minWidth: "260px",
+    minWidth: "280px",
   },
   randomFields: {
-    display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: tokens.spacingVerticalS,
+    display: "flex",
+    flexDirection: "column",
+    gap: tokens.spacingVerticalM,
+  },
+  seedRow: {
+    display: "flex",
+    alignItems: "stretch",
+    gap: tokens.spacingHorizontalXS,
+  },
+  seedInput: { flex: 1 },
+  densityHint: {
+    color: tokens.colorNeutralForeground3,
   },
 });
 
@@ -161,8 +191,8 @@ export const EditPane = () => {
   const setActiveView = useStore((s) => s.setActiveView);
   const [widthInput, setWidthInput] = useState(() => String(session?.width ?? ""));
   const [heightInput, setHeightInput] = useState(() => String(session?.height ?? ""));
-  const [seedInput, setSeedInput] = useState("0");
-  const [aliveInput, setAliveInput] = useState("200");
+  const [seedInput, setSeedInput] = useState(() => String(randomSeed()));
+  const [densityPercent, setDensityPercent] = useState(DEFAULT_DENSITY_PERCENT);
 
   useEffect(() => {
     setWidthInput(String(session?.width ?? ""));
@@ -199,15 +229,13 @@ export const EditPane = () => {
     if (!inSetup) {
       return;
     }
-    const seed = parseInteger(seedInput) ?? 0;
-    const alive = clamp(
-      parseInteger(aliveInput) ?? 200,
-      MIN_ALIVE_PER_THOUSAND,
-      MAX_ALIVE_PER_THOUSAND,
-    );
+    const seed = parseInteger(seedInput) ?? randomSeed();
     setSeedInput(String(seed));
-    setAliveInput(String(alive));
-    void randomize(seed, alive);
+    void randomize(seed, densityPercentToPerThousand(densityPercent));
+  };
+
+  const shuffleSeed = () => {
+    setSeedInput(String(randomSeed()));
   };
 
   const applySelectedPattern = (name: PatternName) => {
@@ -271,20 +299,50 @@ export const EditPane = () => {
               <div className={styles.randomForm}>
                 <Subtitle2>Random board</Subtitle2>
                 <div className={styles.randomFields}>
-                  <Input
-                    aria-label="Random seed"
-                    type="number"
-                    value={seedInput}
-                    onChange={(_, data) => setSeedInput(data.value)}
-                  />
-                  <Input
-                    aria-label="Alive cells per thousand"
-                    type="number"
-                    min={MIN_ALIVE_PER_THOUSAND}
-                    max={MAX_ALIVE_PER_THOUSAND}
-                    value={aliveInput}
-                    onChange={(_, data) => setAliveInput(data.value)}
-                  />
+                  <Field
+                    label={`Density ${densityPercent}%`}
+                    hint={
+                      <Caption1 className={styles.densityHint}>
+                        Fraction of cells that start alive. Higher density =
+                        denser starting board.
+                      </Caption1>
+                    }
+                  >
+                    <Slider
+                      aria-label="Alive-cell density (percent)"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={densityPercent}
+                      onChange={(_, data) => setDensityPercent(data.value)}
+                    />
+                  </Field>
+                  <Field
+                    label="Seed"
+                    hint={
+                      <Caption1 className={styles.densityHint}>
+                        Same seed + density + size = same board. Use Shuffle to
+                        roll a new one.
+                      </Caption1>
+                    }
+                  >
+                    <div className={styles.seedRow}>
+                      <Input
+                        className={styles.seedInput}
+                        aria-label="Random seed"
+                        type="number"
+                        value={seedInput}
+                        onChange={(_, data) => setSeedInput(data.value)}
+                      />
+                      <Button
+                        icon={<ArrowShuffleRegular />}
+                        onClick={shuffleSeed}
+                        aria-label="Shuffle seed"
+                      >
+                        Shuffle
+                      </Button>
+                    </div>
+                  </Field>
                 </div>
                 <Button
                   appearance="primary"

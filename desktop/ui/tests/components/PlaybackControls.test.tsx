@@ -12,9 +12,9 @@ import type { SessionInfo } from "../../src/ipc";
 // the session to setup) and switch activeView so the user actually
 // lands in the place designed for editing.
 
-const pausedSession: SessionInfo = {
-  mode: "paused",
-  iteration: 12,
+const sessionFor = (overrides: Partial<SessionInfo>): SessionInfo => ({
+  mode: "setup",
+  iteration: 0,
   width: 20,
   height: 20,
   maxIterations: 100,
@@ -23,7 +23,10 @@ const pausedSession: SessionInfo = {
   completed: false,
   jumpTarget: null,
   status: null,
-};
+  ...overrides,
+});
+
+const pausedSession: SessionInfo = sessionFor({ mode: "paused", iteration: 12 });
 
 const resetStore = () => {
   useStore.setState({
@@ -62,5 +65,73 @@ describe("PlaybackControls Edit Board handoff", () => {
     // resets to setup; then setActiveView swaps the visible pane.
     expect(editBoard).toHaveBeenCalledTimes(1);
     expect(useStore.getState().activeView).toBe("edit");
+  });
+
+  it("disables Edit Board while a run is playing", () => {
+    useStore.setState({ session: sessionFor({ mode: "playing", iteration: 3 }) });
+    render(<PlaybackControls />);
+
+    // Tooltip becomes the accessible name. While playing, the Edit Board
+    // tooltip flips to the disabled-state copy so screen-reader users
+    // hear why the button is greyed out.
+    expect(
+      screen.getByRole("button", {
+        name: /Pause the run first, then you can edit the board/i,
+      }),
+    ).toBeDisabled();
+  });
+});
+
+describe("PlaybackControls Play/Pause", () => {
+  it("shows a single Play button in setup mode that starts the run", async () => {
+    const user = userEvent.setup();
+    useStore.setState({ session: sessionFor({ mode: "setup" }) });
+    const startRun = vi.fn().mockResolvedValue(undefined);
+    const play = vi.fn().mockResolvedValue(undefined);
+    useStore.setState({ startRun, play });
+
+    render(<PlaybackControls />);
+
+    // No separate Start button — the same Play button handles both
+    // "kick off a new run" (setup) and "resume" (paused).
+    expect(
+      screen.queryByRole("button", { name: /Start the simulation/i }),
+    ).toHaveAccessibleName(/Start the simulation/);
+    await user.click(
+      screen.getByRole("button", { name: /Start the simulation/i }),
+    );
+
+    expect(startRun).toHaveBeenCalledTimes(1);
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("uses Play to resume from paused", async () => {
+    const user = userEvent.setup();
+    useStore.setState({ session: pausedSession });
+    const startRun = vi.fn().mockResolvedValue(undefined);
+    const play = vi.fn().mockResolvedValue(undefined);
+    useStore.setState({ startRun, play });
+
+    render(<PlaybackControls />);
+
+    await user.click(screen.getByRole("button", { name: /^Play \(Space\)/i }));
+
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(startRun).not.toHaveBeenCalled();
+  });
+
+  it("flips Play into Pause while playing", async () => {
+    const user = userEvent.setup();
+    useStore.setState({
+      session: sessionFor({ mode: "playing", iteration: 4 }),
+    });
+    const pause = vi.fn().mockResolvedValue(undefined);
+    useStore.setState({ pause });
+
+    render(<PlaybackControls />);
+
+    await user.click(screen.getByRole("button", { name: /Pause \(Space\)/i }));
+
+    expect(pause).toHaveBeenCalledTimes(1);
   });
 });
