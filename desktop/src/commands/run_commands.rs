@@ -185,8 +185,19 @@ async fn run_play_loop(app: AppHandle, session: Arc<RunSession>, worker_generati
         // Re-read the rate every tick so a mid-run slider drag takes
         // effect immediately without forcing a pause/restart.
         let period = Duration::from_micros(1_000_000 / clamp_gps(session.play_rate_gps()) as u64);
-        next_tick += period;
         let now = Instant::now();
+        // The accumulator pattern (`next_tick += period`) gives us jitter
+        // compensation at a fixed rate, but it breaks down when the rate
+        // changes mid-run: a slow-then-fast slider drag would leave
+        // `next_tick` scheduled far in the future on the old period and
+        // we'd sleep out that whole stale window before honoring the
+        // new period. Cap the scheduled time to `now + period` so a
+        // speed-up takes effect within one new-period instead.
+        next_tick += period;
+        let cap = now + period;
+        if next_tick > cap {
+            next_tick = cap;
+        }
         if next_tick > now {
             tokio::time::sleep(next_tick - now).await;
         } else {
