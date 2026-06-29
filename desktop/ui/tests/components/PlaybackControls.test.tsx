@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { PlaybackControls } from "../../src/components/PlaybackControls";
@@ -204,54 +204,47 @@ describe("PlaybackControls Play/Pause", () => {
 });
 
 describe("PlaybackControls live speed slider", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("debounces pause+play when gps changes while a run is playing", async () => {
+  it("calls setPlayRate with the current gps on mount so the backend has the latest value", () => {
     useStore.setState({
       session: sessionFor({ mode: "playing", iteration: 4 }),
     });
-    const play = vi.fn().mockResolvedValue(undefined);
-    const pause = vi.fn().mockResolvedValue(undefined);
-    useStore.setState({ play, pause });
-
-    const { rerender } = render(<PlaybackControls />);
-
-    // Initial render triggers the effect; the debounce timer is queued
-    // but hasn't fired yet, so neither pause nor play has been called.
-    expect(pause).not.toHaveBeenCalled();
-    expect(play).not.toHaveBeenCalled();
-
-    // Simulate dragging the slider through several values in quick
-    // succession — only the last value should win once the timer fires.
-    useStore.setState({}); // no-op set to keep zustand happy across rerenders
-    rerender(<PlaybackControls />);
-
-    // Advance time past the 200ms debounce window.
-    await vi.advanceTimersByTimeAsync(250);
-    // Drain awaited microtasks (pause → play).
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(pause).toHaveBeenCalledTimes(1);
-    expect(play).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not restart playback when gps changes while paused", async () => {
-    useStore.setState({ session: pausedSession });
-    const play = vi.fn().mockResolvedValue(undefined);
-    const pause = vi.fn().mockResolvedValue(undefined);
-    useStore.setState({ play, pause });
+    const setPlayRate = vi.fn().mockResolvedValue(undefined);
+    useStore.setState({ setPlayRate });
 
     render(<PlaybackControls />);
 
-    await vi.advanceTimersByTimeAsync(500);
+    // setPlayRate is fire-and-forget — single atomic store on the
+    // backend, no pause/play dance. Mount writes the current slider
+    // value so even runs started outside the toolbar pick up the
+    // user's preferred rate.
+    expect(setPlayRate).toHaveBeenCalledWith(5);
+  });
 
-    expect(pause).not.toHaveBeenCalled();
-    expect(play).not.toHaveBeenCalled();
+  it("calls setPlayRate when the slider value changes regardless of mode", async () => {
+    useStore.setState({ session: pausedSession });
+    const setPlayRate = vi.fn().mockResolvedValue(undefined);
+    useStore.setState({ setPlayRate });
+
+    render(<PlaybackControls />);
+
+    expect(setPlayRate).toHaveBeenCalledWith(5);
+    setPlayRate.mockClear();
+
+    // Fluent's Slider responds to native input events. Firing the
+    // change event directly so the assertion doesn't depend on Fluent's
+    // keyboard handling, which jsdom doesn't fully emulate.
+    const slider = screen.getByRole("slider", { name: /Speed/i });
+    const input = slider as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    setter?.call(input, "12");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    await waitFor(() => {
+      expect(setPlayRate).toHaveBeenCalledWith(12);
+    });
   });
 });

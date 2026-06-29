@@ -82,6 +82,8 @@ export const editBoard = (): Promise<void> => invoke("edit_board");
 export const step = (): Promise<void> => invoke("step");
 export const pause = (): Promise<void> => invoke("pause");
 export const play = (gps: number): Promise<void> => invoke("play", { gps });
+export const setPlayRate = (gps: number): Promise<void> =>
+  invoke("set_play_rate", { gps });
 export const jumpTo = (targetIteration: number): Promise<void> =>
   invoke("jump_to", { targetIteration });
 export const extendMaxIterations = (newTotal: number): Promise<void> =>

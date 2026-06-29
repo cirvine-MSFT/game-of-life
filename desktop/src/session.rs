@@ -14,7 +14,7 @@
 //! to render an arbitrarily large series.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 
 use parking_lot::{Mutex, MutexGuard};
 
@@ -128,10 +128,19 @@ impl SessionData {
     }
 }
 
+/// Default play rate used until the first `set_play_rate` arrives.
+/// Lives at module level so the play loop's startup branch and the
+/// `set_play_rate` IPC can share the same fallback.
+pub const DEFAULT_PLAY_RATE_GPS: u16 = 5;
+
 /// Top-level session handle. Cheap to clone via `Arc` from command handlers.
 pub struct RunSession {
     inner: Mutex<SessionData>,
     cancel: AtomicBool,
+    // Re-read by the play loop on every tick so the user can drag the
+    // speed slider live without us pausing and restarting the worker
+    // (which produced a visible gap, especially at low rates).
+    play_rate_gps: AtomicU16,
 }
 
 impl Default for RunSession {
@@ -145,11 +154,25 @@ impl RunSession {
         Self {
             inner: Mutex::new(SessionData::new()),
             cancel: AtomicBool::new(false),
+            play_rate_gps: AtomicU16::new(DEFAULT_PLAY_RATE_GPS),
         }
     }
 
     fn lock(&self) -> MutexGuard<'_, SessionData> {
         self.inner.lock()
+    }
+
+    /// Updates the live play rate. Safe to call at any time — when no
+    /// play worker is running it just sits in the atomic until the next
+    /// `play()` reads it. The caller is responsible for clamping the
+    /// value to the supported range.
+    pub fn set_play_rate_gps(&self, gps: u16) {
+        self.play_rate_gps.store(gps, Ordering::Relaxed);
+    }
+
+    /// Reads the current play rate. Used by the play loop on every tick.
+    pub fn play_rate_gps(&self) -> u16 {
+        self.play_rate_gps.load(Ordering::Relaxed)
     }
 
     /// Snapshot of session metadata for the frontend toolbar / status bar.

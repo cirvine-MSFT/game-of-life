@@ -36,6 +36,7 @@ pub fn run() {
             commands::run_commands::step,
             commands::run_commands::pause,
             commands::run_commands::play,
+            commands::run_commands::set_play_rate,
             commands::run_commands::jump_to,
         ])
         .setup(|_app| Ok(()))

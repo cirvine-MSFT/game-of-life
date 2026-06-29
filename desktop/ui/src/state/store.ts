@@ -36,6 +36,7 @@ import {
   paintCells,
   pause,
   play,
+  setPlayRate,
   randomize,
   readRunSeries,
   restart,
@@ -199,6 +200,7 @@ interface AppState {
   // Run actions
   startRun: () => Promise<void>;
   play: (gps: number) => Promise<void>;
+  setPlayRate: (gps: number) => Promise<void>;
   pause: () => Promise<void>;
   step: () => Promise<void>;
   restart: () => Promise<void>;
@@ -475,6 +477,12 @@ export const useStore = create<AppState>((set, get) => ({
   play: async (gps) => {
     await play(gps);
     await get().refreshSession();
+  },
+
+  setPlayRate: async (gps) => {
+    // Pure rate update — no session refresh needed; the backend just
+    // writes an atomic and the worker reads it on its next tick.
+    await setPlayRate(gps);
   },
 
   pause: async () => {

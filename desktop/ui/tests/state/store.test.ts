@@ -35,6 +35,7 @@ vi.mock("../../src/ipc", async () => {
     clearBoard: vi.fn(async () => undefined),
     startRun: vi.fn(async () => undefined),
     play: vi.fn(async () => undefined),
+    setPlayRate: vi.fn(async () => undefined),
     pause: vi.fn(async () => undefined),
     step: vi.fn(async () => undefined),
     restart: vi.fn(async () => undefined),

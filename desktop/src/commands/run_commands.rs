@@ -105,15 +105,26 @@ pub async fn play(
     session: State<'_, Arc<RunSession>>,
     gps: u16,
 ) -> Result<(), SessionError> {
+    let clamped = clamp_gps(gps);
+    session.set_play_rate_gps(clamped);
     let worker_generation = session.begin_playing()?;
     let _ = app.emit(SESSION_CHANGED, session.info());
 
     let cloned = session.inner().clone();
     let app_for_task = app.clone();
     tokio::spawn(async move {
-        run_play_loop(app_for_task, cloned, clamp_gps(gps), worker_generation).await;
+        run_play_loop(app_for_task, cloned, worker_generation).await;
     });
     Ok(())
+}
+
+/// Updates the live play rate. Safe to call whether or not a worker is
+/// running — when paused/setup it just sits in the atomic until the
+/// next `play()` reads it; while a worker is running it takes effect on
+/// the next tick without pausing the simulation.
+#[tauri::command]
+pub fn set_play_rate(session: State<'_, Arc<RunSession>>, gps: u16) {
+    session.set_play_rate_gps(clamp_gps(gps));
 }
 
 /// Advances toward `target_iteration`. Forward targets `> current` run
@@ -145,8 +156,7 @@ pub async fn jump_to(
     Ok(())
 }
 
-async fn run_play_loop(app: AppHandle, session: Arc<RunSession>, gps: u16, worker_generation: u64) {
-    let period = Duration::from_micros(1_000_000 / gps as u64);
+async fn run_play_loop(app: AppHandle, session: Arc<RunSession>, worker_generation: u64) {
     let mut next_tick = Instant::now();
     loop {
         if session.worker_should_stop(worker_generation) {
@@ -172,6 +182,9 @@ async fn run_play_loop(app: AppHandle, session: Arc<RunSession>, gps: u16, worke
             break;
         }
 
+        // Re-read the rate every tick so a mid-run slider drag takes
+        // effect immediately without forcing a pause/restart.
+        let period = Duration::from_micros(1_000_000 / clamp_gps(session.play_rate_gps()) as u64);
         next_tick += period;
         let now = Instant::now();
         if next_tick > now {
