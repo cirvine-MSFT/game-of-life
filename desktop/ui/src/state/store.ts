@@ -123,6 +123,34 @@ const persistActiveView = (view: ActiveView): void => {
   }
 };
 
+const ANIMATE_TRANSITIONS_STORAGE_KEY = "gol.animateTransitions";
+
+// Default to true so the animation that ships in the box is what new
+// users see; persistence lets people who find it distracting turn it
+// off and have that stick across sessions.
+export const loadPersistedAnimateTransitions = (): boolean => {
+  try {
+    const raw =
+      typeof localStorage !== "undefined"
+        ? localStorage.getItem(ANIMATE_TRANSITIONS_STORAGE_KEY)
+        : null;
+    if (raw === "false") return false;
+    if (raw === "true") return true;
+  } catch {
+    // localStorage can throw in restricted contexts; fall through.
+  }
+  return true;
+};
+
+const persistAnimateTransitions = (value: boolean): void => {
+  try {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(ANIMATE_TRANSITIONS_STORAGE_KEY, String(value));
+  } catch {
+    // Persistence is best-effort; swallow.
+  }
+};
+
 interface TickSummary {
   iteration: number;
   alive: number;
@@ -148,6 +176,7 @@ interface AppState {
   loadedReference: LoadedReference | null;
   theme: ThemeChoice;
   activeView: ActiveView;
+  animateTransitions: boolean;
   connected: boolean;
   initError: string | null;
   aggregateRows: AggregateRow[];
@@ -182,6 +211,9 @@ interface AppState {
 
   // Navigation
   setActiveView: (view: ActiveView) => void;
+
+  // Rendering preferences
+  setAnimateTransitions: (value: boolean) => void;
 
   // Aggregate analysis
   addAggregateFiles: (paths: string[]) => Promise<void>;
@@ -248,6 +280,7 @@ export const useStore = create<AppState>((set, get) => ({
   loadedReference: null,
   theme: "light",
   activeView: loadPersistedActiveView(),
+  animateTransitions: loadPersistedAnimateTransitions(),
   connected: false,
   initError: null,
   aggregateRows: [],
@@ -495,6 +528,11 @@ export const useStore = create<AppState>((set, get) => ({
     // rather than letting it linger in localStorage.
     persistActiveView(view);
     set({ activeView: view });
+  },
+
+  setAnimateTransitions: (value) => {
+    persistAnimateTransitions(value);
+    set({ animateTransitions: value });
   },
 
   addAggregateFiles: async (paths) => {

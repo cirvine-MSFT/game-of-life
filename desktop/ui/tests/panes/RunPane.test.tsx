@@ -182,6 +182,19 @@ describe("RunPane", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders Total births and Total deaths in the run summary", async () => {
+    useStore.setState({ finalStats: completedStats });
+    render(<RunPane />);
+
+    // Both labels live in the StatsPanel's Run summary grid, which is
+    // shown whenever finalStats is populated. The numbers come straight
+    // from the IpcRunStatistics fields.
+    expect(screen.getByText("Total births")).toBeInTheDocument();
+    expect(screen.getByText("Total deaths")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument(); // totalBirths
+    expect(screen.getByText("3")).toBeInTheDocument(); // totalDeaths
+  });
+
   it("startRun clears the loaded reference and history", async () => {
     useStore.setState({
       history: [4, 6, 5],

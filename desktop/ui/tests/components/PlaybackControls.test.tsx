@@ -202,3 +202,56 @@ describe("PlaybackControls Play/Pause", () => {
     expect(play).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("PlaybackControls live speed slider", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("debounces pause+play when gps changes while a run is playing", async () => {
+    useStore.setState({
+      session: sessionFor({ mode: "playing", iteration: 4 }),
+    });
+    const play = vi.fn().mockResolvedValue(undefined);
+    const pause = vi.fn().mockResolvedValue(undefined);
+    useStore.setState({ play, pause });
+
+    const { rerender } = render(<PlaybackControls />);
+
+    // Initial render triggers the effect; the debounce timer is queued
+    // but hasn't fired yet, so neither pause nor play has been called.
+    expect(pause).not.toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
+
+    // Simulate dragging the slider through several values in quick
+    // succession — only the last value should win once the timer fires.
+    useStore.setState({}); // no-op set to keep zustand happy across rerenders
+    rerender(<PlaybackControls />);
+
+    // Advance time past the 200ms debounce window.
+    await vi.advanceTimersByTimeAsync(250);
+    // Drain awaited microtasks (pause → play).
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not restart playback when gps changes while paused", async () => {
+    useStore.setState({ session: pausedSession });
+    const play = vi.fn().mockResolvedValue(undefined);
+    const pause = vi.fn().mockResolvedValue(undefined);
+    useStore.setState({ play, pause });
+
+    render(<PlaybackControls />);
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(pause).not.toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
+  });
+});

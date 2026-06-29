@@ -59,6 +59,7 @@ export const BoardCanvas = ({ paletteName, readOnly = false }: BoardCanvasProps)
   const latestTick = useStore((s) => s.latestTick);
   const sessionMode = useStore((s) => s.session?.mode ?? "setup");
   const setCellAction = useStore((s) => s.setCell);
+  const animateTransitions = useStore((s) => s.animateTransitions);
 
   const palette = paletteFor(paletteName);
 
@@ -138,9 +139,9 @@ export const BoardCanvas = ({ paletteName, readOnly = false }: BoardCanvasProps)
       cancelAnimation();
       return;
     }
-    renderBoard(true);
+    renderBoard(animateTransitions);
     return cancelAnimation;
-  }, [board, cancelAnimation, renderBoard]);
+  }, [animateTransitions, board, cancelAnimation, renderBoard]);
 
   // Redraw on container resize so the cells scale to fill the available
   // space without distorting.

@@ -55,7 +55,7 @@ vi.mock("../../src/ipc", async () => {
 vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 
 import * as ipc from "../../src/ipc";
-import { useStore, loadPersistedActiveView } from "../../src/state/store";
+import { useStore, loadPersistedActiveView, loadPersistedAnimateTransitions } from "../../src/state/store";
 
 const setupSession: SessionInfo = {
   mode: "setup",
@@ -131,6 +131,7 @@ const resetStore = () => {
     loadedReference: null,
     theme: "light",
     activeView: "edit",
+    animateTransitions: true,
     connected: false,
     initError: null,
     aggregateRows: [],
@@ -306,6 +307,36 @@ describe("loadPersistedActiveView()", () => {
   it("defaults to edit when nothing is persisted", () => {
     localStorage.removeItem("gol.activeView");
     expect(loadPersistedActiveView()).toBe("edit");
+  });
+});
+
+describe("setAnimateTransitions()", () => {
+  it("updates the store value and persists it to localStorage", () => {
+    expect(useStore.getState().animateTransitions).toBe(true);
+
+    useStore.getState().setAnimateTransitions(false);
+    expect(useStore.getState().animateTransitions).toBe(false);
+    expect(localStorage.getItem("gol.animateTransitions")).toBe("false");
+
+    useStore.getState().setAnimateTransitions(true);
+    expect(localStorage.getItem("gol.animateTransitions")).toBe("true");
+  });
+});
+
+describe("loadPersistedAnimateTransitions()", () => {
+  it("returns false when explicitly disabled", () => {
+    localStorage.setItem("gol.animateTransitions", "false");
+    expect(loadPersistedAnimateTransitions()).toBe(false);
+  });
+
+  it("returns true when explicitly enabled", () => {
+    localStorage.setItem("gol.animateTransitions", "true");
+    expect(loadPersistedAnimateTransitions()).toBe(true);
+  });
+
+  it("defaults to true (animations on) when nothing is persisted", () => {
+    localStorage.removeItem("gol.animateTransitions");
+    expect(loadPersistedAnimateTransitions()).toBe(true);
   });
 });
 

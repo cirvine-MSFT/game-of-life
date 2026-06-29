@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Badge,
   Body1,
@@ -86,6 +86,48 @@ export const PlaybackControls = () => {
   // concurrent startRun chains. The backend would reject the second,
   // but the unhandled promise noise is avoidable.
   const [isStarting, setIsStarting] = useState(false);
+
+  // Live speed: the backend's play worker captures `gps` at spawn time
+  // and has no IPC for in-flight rate changes. Approximate dynamic-speed
+  // semantics from the UI by pausing and re-playing whenever the slider
+  // moves while a run is active. Debounce so dragging the slider only
+  // restarts the worker once per pause, not on every intermediate value.
+  const sessionMode = session?.mode ?? "setup";
+  const isPlayingMode = sessionMode === "playing";
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playRef = useRef(play);
+  const pauseRef = useRef(pause);
+  // Read the latest actions through refs so the debounce effect doesn't
+  // re-fire just because Zustand returned a new function identity.
+  useEffect(() => {
+    playRef.current = play;
+    pauseRef.current = pause;
+  }, [play, pause]);
+  useEffect(() => {
+    if (!isPlayingMode) {
+      return;
+    }
+    if (restartTimerRef.current !== null) {
+      clearTimeout(restartTimerRef.current);
+    }
+    restartTimerRef.current = setTimeout(() => {
+      restartTimerRef.current = null;
+      void (async () => {
+        // Re-check mode at fire time — the user may have hit Pause
+        // during the debounce window, in which case re-issuing play
+        // would feel like a haunting.
+        if (!isPlayingMode) return;
+        await pauseRef.current();
+        await playRef.current(gps);
+      })();
+    }, 200);
+    return () => {
+      if (restartTimerRef.current !== null) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
+    };
+  }, [gps, isPlayingMode]);
 
   if (!session) {
     return null;

@@ -5,6 +5,7 @@ import {
   Radio,
   RadioGroup,
   Subtitle2,
+  Switch,
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
@@ -60,6 +61,8 @@ export const SettingsPane = () => {
   const styles = useStyles();
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
+  const animateTransitions = useStore((s) => s.animateTransitions);
+  const setAnimateTransitions = useStore((s) => s.setAnimateTransitions);
 
   return (
     <section className={styles.root} aria-label="Settings">
@@ -82,16 +85,27 @@ export const SettingsPane = () => {
             <Radio value="highContrast" label="High contrast" />
             <Radio value="system" label="System" />
           </RadioGroup>
+          <Divider />
+          <Body1>Cell transitions</Body1>
+          <Switch
+            checked={animateTransitions}
+            onChange={(_, data) => setAnimateTransitions(data.checked)}
+            label={
+              animateTransitions
+                ? "Animate cell births and deaths"
+                : "Animations off — instant cell updates"
+            }
+          />
+          <Caption1 className={styles.placeholderNote}>
+            Turn off if the fade-in / fade-out distracts from reading the
+            board, or to squeeze a bit more headroom out of very large boards.
+          </Caption1>
         </div>
         <div className={styles.card}>
           <Subtitle2>More settings coming later</Subtitle2>
           <Caption1 className={styles.placeholderNote}>
             Density, hotkeys, and custom palette controls will live here in a
             future release.
-          </Caption1>
-          <Divider />
-          <Caption1 className={styles.placeholderNote}>
-            For now, theme is the only app-wide preference.
           </Caption1>
         </div>
       </div>

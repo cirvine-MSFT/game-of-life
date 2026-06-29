@@ -16,10 +16,16 @@ const resetStore = () => {
     loadedReference: null,
     theme: "light",
     activeView: "settings",
+    animateTransitions: true,
     connected: false,
     initError: null,
     aggregateRows: [],
   });
+  try {
+    localStorage.clear();
+  } catch {
+    // ignore in restricted contexts
+  }
 };
 
 beforeEach(resetStore);
@@ -50,5 +56,25 @@ describe("SettingsPane", () => {
     expect(errorBubble.closest("[data-role]")?.getAttribute("data-role")).toBe(
       "error",
     );
+  });
+
+  it("renders a cell-transition toggle bound to the store and persists changes", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPane />);
+
+    const toggle = screen.getByRole("switch", {
+      name: /Animate cell births and deaths/i,
+    });
+    expect(toggle).toBeChecked();
+
+    await user.click(toggle);
+
+    expect(useStore.getState().animateTransitions).toBe(false);
+    expect(localStorage.getItem("gol.animateTransitions")).toBe("false");
+    expect(
+      screen.getByRole("switch", {
+        name: /Animations off — instant cell updates/i,
+      }),
+    ).not.toBeChecked();
   });
 });
