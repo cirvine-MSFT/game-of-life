@@ -130,6 +130,7 @@ fn write_run_record_file(
             initial_board_hash: board_grid_hash(&initial_board),
             final_board_hash: board_grid_hash(&final_board),
         },
+        series: None,
         initial_board,
         final_board,
     };

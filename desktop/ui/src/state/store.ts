@@ -36,7 +36,9 @@ import {
   paintCells,
   pause,
   play,
+  setPlayRate,
   randomize,
+  readRunSeries,
   restart,
   saveBoardSnapshot,
   setCell,
@@ -44,6 +46,7 @@ import {
   step,
   type CreateRunArgs,
   type DecodedBoard,
+  type IpcIterationSeries,
   type IpcRunStatistics,
   type JumpProgress,
   type PatternName,
@@ -53,12 +56,114 @@ import {
 
 export type ThemeChoice = "light" | "dark" | "highContrast" | "system";
 
+export type ActiveView =
+  | "edit"
+  | "run"
+  | "aggregate"
+  | "settings"
+  | "telemetry";
+
+export type AggregateRowStatus =
+  | "loading"
+  | "ready"
+  | "summaryOnly"
+  | "error";
+
+export interface AggregateRow {
+  path: string;
+  filename: string;
+  status: AggregateRowStatus;
+  colorIndex: number;
+  visible: boolean;
+  series?: IpcIterationSeries;
+  summary?: IpcRunStatistics;
+  error?: string;
+}
+
+const ACTIVE_VIEW_STORAGE_KEY = "gol.activeView";
+const VALID_PERSISTED_VIEWS: readonly ActiveView[] = [
+  "edit",
+  "run",
+  "aggregate",
+  "settings",
+];
+
+// "telemetry" is part of the type so a future pane can be wired up by
+// flipping the disabled flag on its nav-rail tab, but it doesn't render
+// today. Coerce any persisted "telemetry" (or any unknown value) back to
+// "edit" so the user can never boot into an unreachable view.
+//
+// Exported so tests can exercise the coercion without needing to spin up
+// a fresh module instance via `vi.resetModules` + dynamic import.
+export const loadPersistedActiveView = (): ActiveView => {
+  try {
+    const raw =
+      typeof localStorage !== "undefined"
+        ? localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY)
+        : null;
+    if (raw && (VALID_PERSISTED_VIEWS as readonly string[]).includes(raw)) {
+      return raw as ActiveView;
+    }
+  } catch {
+    // localStorage can throw in restricted contexts; fall through to default.
+  }
+  return "edit";
+};
+
+const persistActiveView = (view: ActiveView): void => {
+  try {
+    if (typeof localStorage === "undefined") return;
+    if (view === "telemetry") {
+      // Don't persist a value we'd just coerce away on load.
+      localStorage.removeItem(ACTIVE_VIEW_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, view);
+  } catch {
+    // Persistence is best-effort; swallow.
+  }
+};
+
+const ANIMATE_TRANSITIONS_STORAGE_KEY = "gol.animateTransitions";
+
+// Default to true so the animation that ships in the box is what new
+// users see; persistence lets people who find it distracting turn it
+// off and have that stick across sessions.
+export const loadPersistedAnimateTransitions = (): boolean => {
+  try {
+    const raw =
+      typeof localStorage !== "undefined"
+        ? localStorage.getItem(ANIMATE_TRANSITIONS_STORAGE_KEY)
+        : null;
+    if (raw === "false") return false;
+    if (raw === "true") return true;
+  } catch {
+    // localStorage can throw in restricted contexts; fall through.
+  }
+  return true;
+};
+
+const persistAnimateTransitions = (value: boolean): void => {
+  try {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(ANIMATE_TRANSITIONS_STORAGE_KEY, String(value));
+  } catch {
+    // Persistence is best-effort; swallow.
+  }
+};
+
 interface TickSummary {
   iteration: number;
   alive: number;
   dead: number;
   births: number;
   deaths: number;
+}
+
+export interface LoadedReference {
+  path: string;
+  filename: string;
+  summaryOnly: boolean;
 }
 
 interface AppState {
@@ -69,9 +174,13 @@ interface AppState {
   latestTick: TickSummary | null;
   jumpProgress: JumpProgress | null;
   finalStats: IpcRunStatistics | null;
+  loadedReference: LoadedReference | null;
   theme: ThemeChoice;
+  activeView: ActiveView;
+  animateTransitions: boolean;
   connected: boolean;
   initError: string | null;
+  aggregateRows: AggregateRow[];
 
   // Lifecycle
   connect: () => Promise<void>;
@@ -91,6 +200,7 @@ interface AppState {
   // Run actions
   startRun: () => Promise<void>;
   play: (gps: number) => Promise<void>;
+  setPlayRate: (gps: number) => Promise<void>;
   pause: () => Promise<void>;
   step: () => Promise<void>;
   restart: () => Promise<void>;
@@ -101,9 +211,22 @@ interface AppState {
   // Settings
   setTheme: (theme: ThemeChoice) => void;
 
+  // Navigation
+  setActiveView: (view: ActiveView) => void;
+
+  // Rendering preferences
+  setAnimateTransitions: (value: boolean) => void;
+
+  // Aggregate analysis
+  addAggregateFiles: (paths: string[]) => Promise<void>;
+  removeAggregateRow: (path: string) => void;
+  clearAggregate: () => void;
+  setAggregateRowVisible: (path: string, visible: boolean) => void;
+
   // Persistence
   loadBoardSnapshot: () => Promise<void>;
   loadRunBoard: (selection: RunBoardSelection) => Promise<void>;
+  loadSavedRun: () => Promise<void>;
   saveBoardSnapshot: () => Promise<void>;
 
   // Tear-down
@@ -111,6 +234,7 @@ interface AppState {
 }
 
 let unlistens: UnlistenFn[] = [];
+const pendingAggregateRequests = new Map<string, symbol>();
 
 const DEFAULT_NEW_RUN: CreateRunArgs = {
   width: 20,
@@ -134,6 +258,20 @@ const messageFromUnknown = (error: unknown): string => {
   return String(error);
 };
 
+const getFilenameFromPath = (path: string): string => {
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+};
+
+const nextColorIndex = (used: Set<number>): number => {
+  let index = 0;
+  while (used.has(index)) {
+    index += 1;
+  }
+  used.add(index);
+  return index;
+};
+
 export const useStore = create<AppState>((set, get) => ({
   session: null,
   board: null,
@@ -141,9 +279,13 @@ export const useStore = create<AppState>((set, get) => ({
   latestTick: null,
   jumpProgress: null,
   finalStats: null,
+  loadedReference: null,
   theme: "light",
+  activeView: loadPersistedActiveView(),
+  animateTransitions: loadPersistedAnimateTransitions(),
   connected: false,
   initError: null,
+  aggregateRows: [],
 
   connect: async () => {
     if (get().connected) {
@@ -252,49 +394,95 @@ export const useStore = create<AppState>((set, get) => ({
     await createRun(args);
     await get().refreshSession();
     await get().refreshBoard();
-    set({ history: [], latestTick: null, finalStats: null, jumpProgress: null });
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   setCell: async (x, y, alive) => {
     await setCell(x, y, alive);
     await get().refreshBoard();
     await get().refreshSession();
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   paintCells: async (edits) => {
     await paintCells(edits);
     await get().refreshBoard();
     await get().refreshSession();
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   applyPattern: async (pattern) => {
     await applyPattern(pattern);
     await get().refreshBoard();
     await get().refreshSession();
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   randomize: async (seed, aliveCellsPerThousand) => {
     await randomize(seed, aliveCellsPerThousand);
     await get().refreshBoard();
     await get().refreshSession();
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   clearBoard: async () => {
     await clearBoard();
     await get().refreshBoard();
     await get().refreshSession();
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   startRun: async () => {
     await startRun();
     await get().refreshSession();
-    await get().refreshHistory();
-    set({ finalStats: null });
+    set({ history: [], finalStats: null, loadedReference: null });
   },
 
   play: async (gps) => {
     await play(gps);
     await get().refreshSession();
+  },
+
+  setPlayRate: async (gps) => {
+    // Pure rate update — no session refresh needed; the backend just
+    // writes an atomic and the worker reads it on its next tick.
+    await setPlayRate(gps);
   },
 
   pause: async () => {
@@ -311,7 +499,7 @@ export const useStore = create<AppState>((set, get) => ({
     await get().refreshBoard();
     await get().refreshHistory();
     await get().refreshSession();
-    set({ finalStats: null, latestTick: null });
+    set({ finalStats: null, loadedReference: null, latestTick: null });
   },
 
   jumpTo: async (target) => {
@@ -327,11 +515,127 @@ export const useStore = create<AppState>((set, get) => ({
   editBoard: async () => {
     await editBoard();
     await get().refreshSession();
-    set({ history: [], latestTick: null, finalStats: null, jumpProgress: null });
+    set({
+      history: [],
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   setTheme: (theme) => {
     set({ theme });
+  },
+
+  setActiveView: (view) => {
+    // Telemetry is reserved as a future destination; the nav-rail tab is
+    // disabled, so this branch isn't reachable from normal UI. Tests or
+    // external callers that set it will be coerced down to "edit" on the
+    // next reload anyway; for symmetry, drop the persisted value here too
+    // rather than letting it linger in localStorage.
+    persistActiveView(view);
+    set({ activeView: view });
+  },
+
+  setAnimateTransitions: (value) => {
+    persistAnimateTransitions(value);
+    set({ animateTransitions: value });
+  },
+
+  addAggregateFiles: async (paths) => {
+    const existingPaths = new Set(get().aggregateRows.map((row) => row.path));
+    const uniqueNewPaths = paths.filter((path, index) => {
+      if (existingPaths.has(path) || paths.indexOf(path) !== index) {
+        return false;
+      }
+      return true;
+    });
+    if (uniqueNewPaths.length === 0) {
+      return;
+    }
+
+    const usedColors = new Set(get().aggregateRows.map((row) => row.colorIndex));
+    let visibleCount = get().aggregateRows.filter((row) => row.visible).length;
+    const requestTokens = new Map<string, symbol>();
+    const rowsToAdd: AggregateRow[] = uniqueNewPaths.map((path) => {
+      const visible = visibleCount < 8;
+      if (visible) {
+        visibleCount += 1;
+      }
+      const token = Symbol(path);
+      pendingAggregateRequests.set(path, token);
+      requestTokens.set(path, token);
+      return {
+        path,
+        filename: getFilenameFromPath(path),
+        status: "loading",
+        colorIndex: nextColorIndex(usedColors),
+        visible,
+      };
+    });
+
+    set((state) => ({ aggregateRows: [...state.aggregateRows, ...rowsToAdd] }));
+
+    const reads = rowsToAdd.map((row) => readRunSeries(row.path));
+    const results = await Promise.allSettled(reads);
+    results.forEach((result, index) => {
+      const path = rowsToAdd[index].path;
+      if (pendingAggregateRequests.get(path) !== requestTokens.get(path)) {
+        return;
+      }
+      pendingAggregateRequests.delete(path);
+      if (result.status === "fulfilled") {
+        const payload = result.value;
+        set((state) => ({
+          aggregateRows: state.aggregateRows.map((row) =>
+            row.path === path
+              ? {
+                  ...row,
+                  filename: payload.filename || row.filename,
+                  status: payload.series ? "ready" : "summaryOnly",
+                  series: payload.series ?? undefined,
+                  summary: payload.summary,
+                  error: undefined,
+                }
+              : row,
+          ),
+        }));
+        return;
+      }
+
+      set((state) => ({
+        aggregateRows: state.aggregateRows.map((row) =>
+          row.path === path
+            ? {
+                ...row,
+                status: "error",
+                error: messageFromUnknown(result.reason),
+              }
+            : row,
+        ),
+      }));
+    });
+  },
+
+  removeAggregateRow: (path) => {
+    pendingAggregateRequests.delete(path);
+    set((state) => ({
+      aggregateRows: state.aggregateRows.filter((row) => row.path !== path),
+    }));
+  },
+
+  clearAggregate: () => {
+    pendingAggregateRequests.clear();
+    set({ aggregateRows: [] });
+  },
+
+  setAggregateRowVisible: (path, visible) => {
+    set((state) => ({
+      aggregateRows: state.aggregateRows.map((row) =>
+        row.path === path ? { ...row, visible } : row,
+      ),
+    }));
   },
 
   loadBoardSnapshot: async () => {
@@ -373,7 +677,12 @@ export const useStore = create<AppState>((set, get) => ({
     await get().refreshSession();
     await get().refreshBoard();
     await get().refreshHistory();
-    set({ latestTick: null, finalStats: null, jumpProgress: null });
+    set({
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
   },
 
   loadRunBoard: async (selection) => {
@@ -415,7 +724,74 @@ export const useStore = create<AppState>((set, get) => ({
     await get().refreshSession();
     await get().refreshBoard();
     await get().refreshHistory();
-    set({ latestTick: null, finalStats: null, jumpProgress: null });
+    set({
+      latestTick: null,
+      finalStats: null,
+      loadedReference: null,
+      jumpProgress: null,
+    });
+  },
+
+  loadSavedRun: async () => {
+    const { open, ask, message } = await import("@tauri-apps/plugin-dialog");
+    const session = get().session;
+    if (session?.dirty) {
+      const discard = await ask(
+        "The current board has unsaved changes. Discard them and load a saved run?",
+        { title: "Discard unsaved changes?", kind: "warning" },
+      );
+      if (!discard) {
+        return;
+      }
+    }
+
+    const chosen = await open({
+      title: "Load saved run",
+      multiple: false,
+      filters: [{ name: "Game of Life run", extensions: ["gol"] }],
+    });
+    if (!chosen) {
+      return;
+    }
+    const path = Array.isArray(chosen) ? chosen[0] : chosen;
+    if (!path) {
+      return;
+    }
+
+    let runSeries: Awaited<ReturnType<typeof readRunSeries>>;
+    try {
+      runSeries = await readRunSeries(path);
+    } catch (error) {
+      await message(messageFromUnknown(error), {
+        title: "Unable to load saved run",
+        kind: "error",
+      });
+      return;
+    }
+
+    try {
+      await loadRunBoard(path, "initial");
+    } catch (error) {
+      await message(messageFromUnknown(error), {
+        title: "Unable to load saved run",
+        kind: "error",
+      });
+      return;
+    }
+
+    await get().refreshSession();
+    await get().refreshBoard();
+    set({
+      history: runSeries.series?.alive ?? [],
+      finalStats: runSeries.summary,
+      loadedReference: {
+        path: runSeries.path,
+        filename: runSeries.filename,
+        summaryOnly: runSeries.series === null,
+      },
+      latestTick: null,
+      jumpProgress: null,
+    });
   },
 
   saveBoardSnapshot: async () => {

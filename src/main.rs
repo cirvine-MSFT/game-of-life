@@ -15,11 +15,11 @@ use game_of_life::persistence::{
     write_board_snapshot, write_run_record, write_streaming_board_snapshot, BoardSnapshot,
     BoardSnapshotReadError, BoardSnapshotWriteError, ExtractBoardError, ExtractWhich, FileKind,
     RunId, RunRecord, RunRecordConfig, RunRecordReadError, RunRecordResult, RunRecordWriteError,
-    SCHEMA_VERSION, TOOL_VERSION,
+    RUN_RECORD_SCHEMA_VERSION, TOOL_VERSION,
 };
 use game_of_life::stats::{
     run_statistics::RunStatus, terminal_status_for_outcome, AdvanceOutcome, CycleStatistics,
-    RunStatistics, RunStatisticsCollector,
+    IterationSeries, RunStatistics, RunStatisticsCollector,
 };
 use game_of_life::{
     parse_cli_args, BlinkerBoardInitializer, BoardEditor, BoardInitializer, BoardSignatureSource,
@@ -332,7 +332,7 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
     }
     let wall_time_ms = started.elapsed().as_millis() as u64;
     let status = terminal_status.unwrap_or(RunStatus::MaxIterations);
-    let stats = collector.finalize_with_cycle(status, cycle_stats);
+    let (stats, series) = collector.finalize_with_series(status, cycle_stats);
 
     println!("Game of Life");
     println!("Board size: {board_size}");
@@ -363,6 +363,7 @@ fn run_simulation(config: SimulationConfig) -> Result<(), RunSimulationError> {
             initial.random_seed,
             initial.continued_from,
             stats,
+            Some(series),
             wall_time_ms,
             initial_board_for_record,
             board.clone(),
@@ -770,6 +771,7 @@ fn build_run_record(
     random_seed: u64,
     continued_from: Option<RunId>,
     stats: game_of_life::stats::RunStatistics,
+    series: Option<IterationSeries>,
     wall_time_ms: u64,
     initial_board: InMemoryBoard,
     final_board: InMemoryBoard,
@@ -778,7 +780,7 @@ fn build_run_record(
     let final_board_hash = board_grid_hash(&final_board);
     RunRecord {
         run_id,
-        schema_version: SCHEMA_VERSION,
+        schema_version: RUN_RECORD_SCHEMA_VERSION,
         created_at: SystemTime::now(),
         tool_version: TOOL_VERSION.to_string(),
         config: RunRecordConfig {
@@ -808,6 +810,7 @@ fn build_run_record(
             initial_board_hash,
             final_board_hash,
         },
+        series,
         initial_board,
         final_board,
     }

@@ -18,6 +18,7 @@ pub fn run() {
             commands::session_commands::get_board,
             commands::session_commands::get_alive_history,
             commands::session_commands::get_final_stats,
+            commands::session_commands::read_run_series,
             commands::session_commands::default_save_dir,
             commands::session_commands::save_board_snapshot,
             commands::session_commands::load_board_snapshot,
@@ -35,6 +36,7 @@ pub fn run() {
             commands::run_commands::step,
             commands::run_commands::pause,
             commands::run_commands::play,
+            commands::run_commands::set_play_rate,
             commands::run_commands::jump_to,
         ])
         .setup(|_app| Ok(()))

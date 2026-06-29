@@ -5,7 +5,7 @@ import {
   teamsHighContrastTheme,
 } from "@fluentui/react-components";
 
-import { Shell } from "./components/Shell";
+import { AppShell } from "./components/AppShell";
 import { useStore } from "./state/store";
 
 const themeFor = (choice: string) => {
@@ -31,7 +31,7 @@ export const App = () => {
   const theme = useStore((s) => s.theme);
   return (
     <FluentProvider theme={themeFor(theme)} style={{ height: "100vh" }}>
-      <Shell />
+      <AppShell />
     </FluentProvider>
   );
 };

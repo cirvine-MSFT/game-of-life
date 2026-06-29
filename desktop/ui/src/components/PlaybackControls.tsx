@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Badge,
   Body1,
@@ -77,10 +77,25 @@ export const PlaybackControls = () => {
   const step = useStore((s) => s.step);
   const restart = useStore((s) => s.restart);
   const editBoard = useStore((s) => s.editBoard);
+  const setActiveView = useStore((s) => s.setActiveView);
   const jumpTo = useStore((s) => s.jumpTo);
   const finalStats = useStore((s) => s.finalStats);
+  const setPlayRate = useStore((s) => s.setPlayRate);
   const [gps, setGps] = useState(5);
   const [jumpTarget, setJumpTarget] = useState("");
+  // Guards against a double-click on Play in setup mode firing two
+  // concurrent startRun chains. The backend would reject the second,
+  // but the unhandled promise noise is avoidable.
+  const [isStarting, setIsStarting] = useState(false);
+
+  // Live speed: the backend exposes a set_play_rate IPC that writes an
+  // atomic the play worker re-reads on every tick. Pushing it on every
+  // gps change is cheap (single atomic store, no mode transition) and
+  // safe to call in any mode — when no worker is running it just sits
+  // there until the next play() picks it up.
+  useEffect(() => {
+    void setPlayRate(gps);
+  }, [gps, setPlayRate]);
 
   if (!session) {
     return null;
@@ -90,13 +105,47 @@ export const PlaybackControls = () => {
   const inSetup = mode === "setup";
   const isPlaying = mode === "playing";
   const isJumping = mode === "jumpingTo";
-  const canStep = mode === "paused" && !session.completed;
+  const isPaused = mode === "paused";
+  const hasBoard = session.width > 0 && session.height > 0;
+  const canStep = isPaused && !session.completed;
   const canRestart = !inSetup;
-  const canEdit = !inSetup;
-  const canStart = inSetup;
-  const canPlay = mode === "paused" && !session.completed;
+  // Edit hops back to the Edit pane (and cancels playback first). It only
+  // makes sense from a quiescent state; pausing a live run is the user's
+  // explicit call, so we don't sneak it in here.
+  const canEdit = (inSetup || isPaused) && hasBoard;
+  // One button instead of two — "Play" in setup means "Start the run",
+  // "Play" while paused means "Resume", and the same button flips to
+  // "Pause" while a run is in flight.
+  const showPause = isPlaying || isJumping;
+  const canPlay = !showPause && hasBoard && !session.completed && !isStarting;
   const canPause = isPlaying || isJumping;
-  const canJump = mode === "paused";
+  const canJump = isPaused;
+  const playOrPause = () => {
+    if (showPause) {
+      void pause();
+      return;
+    }
+    // From setup, the backend's start_run lands in paused mode with the
+    // initial board ready — so the user would otherwise see the toolbar
+    // shift to "Paused" and have to click Play a second time. Chain the
+    // two calls so a single click on Play in setup just starts playing.
+    void (async () => {
+      if (inSetup) {
+        setIsStarting(true);
+        try {
+          await startRun();
+        } catch {
+          setIsStarting(false);
+          return;
+        }
+      }
+      try {
+        await play(gps);
+      } finally {
+        setIsStarting(false);
+      }
+    })();
+  };
 
   const terminal = formatTerminalStatusFromSession(session, finalStats);
 
@@ -119,68 +168,70 @@ export const PlaybackControls = () => {
       <Body1>Iteration {session.iteration}</Body1>
       <ToolbarDivider />
 
-      {canStart && (
-        <Tooltip content="Start the simulation (Space)" relationship="label">
-          <ToolbarButton appearance="primary" icon={<PlayRegular />} onClick={() => void startRun()}>
-            Start
+      {showPause ? (
+        <Tooltip content="Pause (Space)" relationship="label">
+          <ToolbarButton
+            appearance="primary"
+            icon={<PauseRegular />}
+            disabled={!canPause}
+            onClick={playOrPause}
+          >
+            Pause
+          </ToolbarButton>
+        </Tooltip>
+      ) : (
+        <Tooltip
+          content={inSetup ? "Start the simulation (Space)" : "Play (Space)"}
+          relationship="label"
+        >
+          <ToolbarButton
+            appearance="primary"
+            icon={<PlayRegular />}
+            disabled={!canPlay}
+            onClick={playOrPause}
+          >
+            Play
           </ToolbarButton>
         </Tooltip>
       )}
 
-      {!canStart && (
-        <>
-          {!isPlaying && (
-            <Tooltip content="Play (Space)" relationship="label">
-              <ToolbarButton
-                appearance="primary"
-                icon={<PlayRegular />}
-                disabled={!canPlay}
-                onClick={() => void play(gps)}
-              >
-                Play
-              </ToolbarButton>
-            </Tooltip>
-          )}
-          {isPlaying && (
-            <Tooltip content="Pause (Space)" relationship="label">
-              <ToolbarButton
-                appearance="primary"
-                icon={<PauseRegular />}
-                disabled={!canPause}
-                onClick={() => void pause()}
-              >
-                Pause
-              </ToolbarButton>
-            </Tooltip>
-          )}
+      <Tooltip content="Step one generation (Right arrow)" relationship="label">
+        <ToolbarButton icon={<NextRegular />} disabled={!canStep} onClick={() => void step()}>
+          Step
+        </ToolbarButton>
+      </Tooltip>
 
-          <Tooltip content="Step one generation (Right arrow)" relationship="label">
-            <ToolbarButton icon={<NextRegular />} disabled={!canStep} onClick={() => void step()}>
-              Step
-            </ToolbarButton>
-          </Tooltip>
+      <Tooltip content="Restart from initial board (R)" relationship="label">
+        <ToolbarButton
+          icon={<ArrowResetRegular />}
+          disabled={!canRestart}
+          onClick={() => void restart()}
+        >
+          Restart
+        </ToolbarButton>
+      </Tooltip>
 
-          <Tooltip content="Restart from initial board (R)" relationship="label">
-            <ToolbarButton
-              icon={<ArrowResetRegular />}
-              disabled={!canRestart}
-              onClick={() => void restart()}
-            >
-              Restart
-            </ToolbarButton>
-          </Tooltip>
-
-          <Tooltip content="Return to Setup mode (Esc)" relationship="label">
-            <ToolbarButton
-              icon={<CursorRegular />}
-              disabled={!canEdit}
-              onClick={() => void editBoard()}
-            >
-              Edit Board
-            </ToolbarButton>
-          </Tooltip>
-        </>
-      )}
+      <Tooltip
+        content={
+          canEdit
+            ? "Return the board to setup and open the Edit pane (Esc)"
+            : "Pause the run first, then you can edit the board"
+        }
+        relationship="label"
+      >
+        <ToolbarButton
+          icon={<CursorRegular />}
+          disabled={!canEdit}
+          onClick={() => {
+            void (async () => {
+              await editBoard();
+              setActiveView("edit");
+            })();
+          }}
+        >
+          Edit Board
+        </ToolbarButton>
+      </Tooltip>
 
       <ToolbarDivider />
       <Field label={`Speed ${gps} gps`} className={styles.speedSlider}>
@@ -189,7 +240,6 @@ export const PlaybackControls = () => {
           max={MAX_GPS}
           value={gps}
           onChange={(_, data) => setGps(data.value)}
-          disabled={inSetup}
         />
       </Field>
 

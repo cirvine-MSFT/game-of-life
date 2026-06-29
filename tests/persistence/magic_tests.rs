@@ -4,12 +4,21 @@ use std::io::Cursor;
 
 use game_of_life::persistence::{
     sniff_from_reader, FileKind, MagicError, BOARD_SNAPSHOT_MAGIC, MAX_MAGIC_PEEK_BYTES,
-    RUN_RECORD_MAGIC,
+    RUN_RECORD_MAGIC, RUN_RECORD_MAGIC_V1,
 };
 
 #[test]
 fn sniff_recognizes_run_record_magic() {
     let mut cursor = Cursor::new(format!("{RUN_RECORD_MAGIC}\nmore stuff\n"));
+    assert_eq!(
+        sniff_from_reader("dummy.gol", &mut cursor).unwrap(),
+        FileKind::RunRecord
+    );
+}
+
+#[test]
+fn sniff_recognizes_legacy_run_record_magic() {
+    let mut cursor = Cursor::new(format!("{RUN_RECORD_MAGIC_V1}\nmore stuff\n"));
     assert_eq!(
         sniff_from_reader("dummy.gol", &mut cursor).unwrap(),
         FileKind::RunRecord

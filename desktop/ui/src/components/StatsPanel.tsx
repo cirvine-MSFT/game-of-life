@@ -16,6 +16,7 @@ import {
 } from "recharts";
 
 import { useStore } from "../state/store";
+import { prepareSeries } from "../state/seriesDecimation";
 import { formatTerminalStatusFromStats } from "../state/terminalStatus";
 
 const useStyles = makeStyles({
@@ -39,32 +40,6 @@ const useStyles = makeStyles({
   },
 });
 
-const HISTORY_DECIMATION_TARGET = 200;
-
-/**
- * Decimates the alive-count history down to roughly
- * `HISTORY_DECIMATION_TARGET` points so Recharts stays responsive even
- * after thousands of generations. We tag each point with its absolute
- * generation index so the chart's x-axis reflects real time, not the
- * decimated index.
- */
-const prepareSeries = (history: number[]): { generation: number; alive: number }[] => {
-  if (history.length <= HISTORY_DECIMATION_TARGET) {
-    return history.map((alive, generation) => ({ generation, alive }));
-  }
-  const stride = Math.ceil(history.length / HISTORY_DECIMATION_TARGET);
-  const out: { generation: number; alive: number }[] = [];
-  for (let i = 0; i < history.length; i += stride) {
-    out.push({ generation: i, alive: history[i] });
-  }
-  // Always include the most recent point so the chart's right edge
-  // matches the current iteration.
-  if (out[out.length - 1]?.generation !== history.length - 1) {
-    out.push({ generation: history.length - 1, alive: history[history.length - 1] });
-  }
-  return out;
-};
-
 export const StatsPanel = () => {
   const styles = useStyles();
   const history = useStore((s) => s.history);
@@ -72,8 +47,9 @@ export const StatsPanel = () => {
   const session = useStore((s) => s.session);
   const finalStats = useStore((s) => s.finalStats);
 
+  const generation = session?.iteration ?? 0;
   const series = prepareSeries(history);
-  const alive = latestTick?.alive ?? history[history.length - 1] ?? 0;
+  const alive = latestTick?.alive ?? history[generation] ?? history[history.length - 1] ?? 0;
   const dead = latestTick?.dead;
   const births = latestTick?.births ?? 0;
   const deaths = latestTick?.deaths ?? 0;
@@ -81,7 +57,7 @@ export const StatsPanel = () => {
 
   return (
     <section className={styles.root} aria-label="Statistics panel">
-      <Subtitle2>Generation {session?.iteration ?? 0}</Subtitle2>
+      <Subtitle2>Generation {generation}</Subtitle2>
 
       <div className={styles.metricsGrid}>
         <div className={styles.metric}>
@@ -141,6 +117,10 @@ export const StatsPanel = () => {
             <div className={styles.metric}>
               <Caption1>Total births</Caption1>
               <Body1>{finalStats.totalBirths}</Body1>
+            </div>
+            <div className={styles.metric}>
+              <Caption1>Total deaths</Caption1>
+              <Body1>{finalStats.totalDeaths}</Body1>
             </div>
             {finalStats.cyclePeriod != null && (
               <div className={styles.metric}>

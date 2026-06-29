@@ -8,6 +8,7 @@ import type {
   BoardPayload,
   CellEdit,
   InitialSource,
+  IpcRunSeries,
   IpcRunStatistics,
   PatternName,
   RunBoardSelection,
@@ -25,6 +26,9 @@ export const getAliveHistory = (): Promise<number[]> =>
 
 export const getFinalStats = (): Promise<IpcRunStatistics | null> =>
   invoke("get_final_stats");
+
+export const readRunSeries = (path: string): Promise<IpcRunSeries> =>
+  invoke("read_run_series", { path });
 
 export const defaultSaveDir = (): Promise<string> => invoke("default_save_dir");
 
@@ -78,6 +82,8 @@ export const editBoard = (): Promise<void> => invoke("edit_board");
 export const step = (): Promise<void> => invoke("step");
 export const pause = (): Promise<void> => invoke("pause");
 export const play = (gps: number): Promise<void> => invoke("play", { gps });
+export const setPlayRate = (gps: number): Promise<void> =>
+  invoke("set_play_rate", { gps });
 export const jumpTo = (targetIteration: number): Promise<void> =>
   invoke("jump_to", { targetIteration });
 export const extendMaxIterations = (newTotal: number): Promise<void> =>

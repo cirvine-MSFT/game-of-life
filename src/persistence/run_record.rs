@@ -3,9 +3,9 @@
 //! Run records have the shape:
 //!
 //! ```text
-//! GOL-RUN-RECORD v1
+//! GOL-RUN-RECORD v2
 //! run_id: 7b3a1f0c-4d2e-4a51-9c5e-2f8c3a1b9d77
-//! schema_version: 1
+//! schema_version: 2
 //! created_at: 2026-06-12T22:55:20Z
 //! tool_version: 0.1.0
 //!
@@ -58,6 +58,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use crate::board::{BoardSize, InMemoryBoard};
+use crate::stats::IterationSeries;
 
 use super::board_snapshot::{
     read_board_block, slurp_with_size_guard, write_board_block_to, BoardSnapshot,
@@ -65,10 +66,13 @@ use super::board_snapshot::{
 };
 use super::errors::PersistenceIoError;
 use super::hash::{fnv1a_64, format_hash, parse_hash};
-use super::magic::{sniff_from_reader, FileKind, MagicError, RUN_RECORD_MAGIC, SCHEMA_VERSION};
+use super::magic::{
+    run_record_version_from_magic, sniff_from_reader, FileKind, MagicError, RunRecordVersion,
+    RUN_RECORD_MAGIC_V1, RUN_RECORD_MAGIC_V2, RUN_RECORD_SCHEMA_VERSION,
+};
 use super::parser::{
-    parse_begin_fence, parse_field_line, parse_section_header, strip_trailing_cr, ParseError,
-    ParseLocation,
+    parse_begin_fence, parse_field_line, parse_section_header, parse_u64_list, strip_trailing_cr,
+    ParseError, ParseLocation,
 };
 use super::run_id::{format_run_id, parse_run_id, RunId};
 use super::timestamps::{format_utc, parse_utc, TimestampParseError};
@@ -129,6 +133,7 @@ pub struct RunRecord {
     pub tool_version: String,
     pub config: RunRecordConfig,
     pub result: RunRecordResult,
+    pub series: Option<IterationSeries>,
     pub initial_board: InMemoryBoard,
     pub final_board: InMemoryBoard,
 }
@@ -475,9 +480,9 @@ pub fn write_run_record(
 }
 
 fn write_run_record_body<W: Write>(writer: &mut W, record: &RunRecord) -> io::Result<()> {
-    writeln!(writer, "{RUN_RECORD_MAGIC}")?;
+    writeln!(writer, "{RUN_RECORD_MAGIC_V2}")?;
     writeln!(writer, "run_id: {}", format_run_id(&record.run_id))?;
-    writeln!(writer, "schema_version: {}", record.schema_version)?;
+    writeln!(writer, "schema_version: {RUN_RECORD_SCHEMA_VERSION}")?;
     writeln!(writer, "created_at: {}", format_utc(record.created_at))?;
     writeln!(writer, "tool_version: {}", record.tool_version)?;
     writeln!(writer)?;
@@ -556,11 +561,27 @@ fn write_run_record_body<W: Write>(writer: &mut W, record: &RunRecord) -> io::Re
     )?;
     writeln!(writer)?;
 
+    if let Some(series) = &record.series {
+        writeln!(writer, "[series]")?;
+        writeln!(writer, "alive: {}", format_u64_list(&series.alive))?;
+        writeln!(writer, "births: {}", format_u64_list(&series.births))?;
+        writeln!(writer, "deaths: {}", format_u64_list(&series.deaths))?;
+        writeln!(writer)?;
+    }
+
     write_board_block_to(writer, INITIAL_BOARD_LABEL, &record.initial_board)?;
     writeln!(writer)?;
     write_board_block_to(writer, FINAL_BOARD_LABEL, &record.final_board)?;
 
     Ok(())
+}
+
+fn format_u64_list(values: &[u64]) -> String {
+    values
+        .iter()
+        .map(u64::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// Computes the FNV-1a 64-bit hash of an `InMemoryBoard`'s grid using the
@@ -658,11 +679,16 @@ pub fn read_run_record_with_warnings(
     }
 
     let mut cursor = LineCursor::new(path.display().to_string(), &canonical_without_trailer);
-    cursor_skip_magic(&mut cursor, RUN_RECORD_MAGIC)?;
+    let run_record_version = cursor_skip_run_record_magic(&mut cursor)?;
 
-    let header = parse_run_header(&mut cursor)?;
+    let header = parse_run_header(&mut cursor, run_record_version)?;
     let config = parse_config_section(&mut cursor)?;
     let result = parse_result_section(&mut cursor)?;
+    let series = if run_record_version == RunRecordVersion::V2 {
+        parse_optional_series_section(&mut cursor, &result)?
+    } else {
+        None
+    };
 
     let initial_board = read_embedded_board_block(
         &mut cursor,
@@ -724,6 +750,7 @@ pub fn read_run_record_with_warnings(
             tool_version: header.tool_version,
             config,
             result,
+            series,
             initial_board,
             final_board,
         },
@@ -757,22 +784,20 @@ fn slurp_with_size_guard_into_run_error(
     }
 }
 
-fn cursor_skip_magic(
+fn cursor_skip_run_record_magic(
     cursor: &mut LineCursor<'_>,
-    expected: &str,
-) -> Result<(), RunRecordReadError> {
+) -> Result<RunRecordVersion, RunRecordReadError> {
     let line = cursor.next_logical().map_err(map_board_snapshot_err)?;
     let line = line.ok_or_else(|| ParseError::UnexpectedEnd {
         location: cursor.eof_location(),
-        expected: format!("'{expected}'"),
+        expected: format!("'{RUN_RECORD_MAGIC_V1}' or '{RUN_RECORD_MAGIC_V2}'"),
     })?;
-    if line.trim() != expected {
-        return Err(RunRecordReadError::Parse(ParseError::MalformedFieldLine {
+    run_record_version_from_magic(line.trim()).ok_or_else(|| {
+        RunRecordReadError::Parse(ParseError::MalformedFieldLine {
             location: cursor.last_consumed_location(),
             line,
-        }));
-    }
-    Ok(())
+        })
+    })
 }
 
 #[derive(Debug)]
@@ -803,7 +828,10 @@ fn set_once<T>(
     Ok(())
 }
 
-fn parse_run_header(cursor: &mut LineCursor<'_>) -> Result<RunHeader, RunRecordReadError> {
+fn parse_run_header(
+    cursor: &mut LineCursor<'_>,
+    run_record_version: RunRecordVersion,
+) -> Result<RunHeader, RunRecordReadError> {
     let mut run_id: Option<RunId> = None;
     let mut schema_version: Option<u32> = None;
     let mut created_at: Option<SystemTime> = None;
@@ -839,7 +867,7 @@ fn parse_run_header(cursor: &mut LineCursor<'_>) -> Result<RunHeader, RunRecordR
                             field: key.to_string(),
                             value: value.to_string(),
                         })?;
-                if parsed != SCHEMA_VERSION {
+                if parsed != run_record_version.schema_version() {
                     return Err(ParseError::UnsupportedSchemaVersion {
                         location,
                         version: parsed,
@@ -1029,7 +1057,7 @@ fn parse_result_section(
             Some(l) => l,
             None => break,
         };
-        if parse_begin_fence(line).is_some() {
+        if parse_section_header(line).is_some() || parse_begin_fence(line).is_some() {
             break;
         }
         let location = cursor.current_location();
@@ -1169,6 +1197,134 @@ fn parse_result_section(
         initial_board_hash: required_field(initial_board_hash, "initial_board_hash")?,
         final_board_hash: required_field(final_board_hash, "final_board_hash")?,
     })
+}
+
+fn parse_optional_series_section(
+    cursor: &mut LineCursor<'_>,
+    result: &RunRecordResult,
+) -> Result<Option<IterationSeries>, RunRecordReadError> {
+    let Some(line) = cursor.peek_logical().map_err(map_board_snapshot_err)? else {
+        return Ok(None);
+    };
+    let Some(section) = parse_section_header(line) else {
+        return Ok(None);
+    };
+    if section != "series" {
+        return Ok(None);
+    }
+
+    expect_section_header(cursor, "series")?;
+    let mut alive: Option<(Vec<u64>, ParseLocation)> = None;
+    let mut births: Option<(Vec<u64>, ParseLocation)> = None;
+    let mut deaths: Option<(Vec<u64>, ParseLocation)> = None;
+
+    loop {
+        let peek = cursor.peek_logical().map_err(map_board_snapshot_err)?;
+        let line = match peek {
+            Some(l) => l,
+            None => break,
+        };
+        if parse_section_header(line).is_some() || parse_begin_fence(line).is_some() {
+            break;
+        }
+        let location = cursor.current_location();
+        cursor.consume();
+        let (key, value) = parse_field_line(location.clone(), line)?;
+        match key {
+            "alive" => {
+                let parsed = parse_u64_list(location.clone(), key, value)?;
+                set_once(&mut alive, (parsed, location.clone()), &location, key)?;
+            }
+            "births" => {
+                let parsed = parse_u64_list(location.clone(), key, value)?;
+                set_once(&mut births, (parsed, location.clone()), &location, key)?;
+            }
+            "deaths" => {
+                let parsed = parse_u64_list(location.clone(), key, value)?;
+                set_once(&mut deaths, (parsed, location.clone()), &location, key)?;
+            }
+            _ => {
+                return Err(ParseError::MalformedFieldLine {
+                    location,
+                    line: line.to_string(),
+                }
+                .into());
+            }
+        }
+    }
+
+    let (alive, alive_location) = alive.ok_or_else(|| RunRecordReadError::MissingField {
+        section: "series".to_string(),
+        field: "alive".to_string(),
+    })?;
+    let (births, births_location) = births.ok_or_else(|| RunRecordReadError::MissingField {
+        section: "series".to_string(),
+        field: "births".to_string(),
+    })?;
+    let (deaths, deaths_location) = deaths.ok_or_else(|| RunRecordReadError::MissingField {
+        section: "series".to_string(),
+        field: "deaths".to_string(),
+    })?;
+
+    let expected_len = usize::try_from(result.iterations_run)
+        .ok()
+        .and_then(|value| value.checked_add(1))
+        .ok_or_else(|| RunRecordReadError::MalformedField {
+            location: alive_location.clone(),
+            field: "iterations_run".to_string(),
+            value: result.iterations_run.to_string(),
+        })?;
+    validate_series_len("alive", &alive, expected_len, &alive_location)?;
+    validate_series_len("births", &births, expected_len, &births_location)?;
+    validate_series_len("deaths", &deaths, expected_len, &deaths_location)?;
+    validate_series_first("alive", &alive, result.initial_alive_count, &alive_location)?;
+    validate_series_first("births", &births, 0, &births_location)?;
+    validate_series_first("deaths", &deaths, 0, &deaths_location)?;
+
+    Ok(Some(IterationSeries {
+        alive,
+        births,
+        deaths,
+    }))
+}
+
+fn validate_series_len(
+    field: &str,
+    values: &[u64],
+    expected_len: usize,
+    location: &ParseLocation,
+) -> Result<(), RunRecordReadError> {
+    if values.len() == expected_len {
+        Ok(())
+    } else {
+        Err(ParseError::SeriesLengthMismatch {
+            location: location.clone(),
+            field: field.to_string(),
+            expected_len,
+            actual_len: values.len(),
+        }
+        .into())
+    }
+}
+
+fn validate_series_first(
+    field: &str,
+    values: &[u64],
+    expected: u64,
+    location: &ParseLocation,
+) -> Result<(), RunRecordReadError> {
+    let actual = values.first().copied().unwrap_or_default();
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(ParseError::SeriesInitialValueMismatch {
+            location: location.clone(),
+            field: field.to_string(),
+            expected,
+            actual,
+        }
+        .into())
+    }
 }
 
 fn expect_section_header(

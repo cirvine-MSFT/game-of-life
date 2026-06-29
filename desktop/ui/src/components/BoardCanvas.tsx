@@ -22,6 +22,7 @@ const useStyles = makeStyles({
 
 interface BoardCanvasProps {
   paletteName: PaletteName;
+  readOnly?: boolean;
 }
 
 interface DragState {
@@ -46,7 +47,7 @@ const TRANSITION_DURATION_MS = 550;
  * Renders the current board onto a Canvas 2D surface and wires pointer
  * events for click + drag-paint when the session is in Setup mode.
  */
-export const BoardCanvas = ({ paletteName }: BoardCanvasProps) => {
+export const BoardCanvas = ({ paletteName, readOnly = false }: BoardCanvasProps) => {
   const styles = useStyles();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -58,6 +59,7 @@ export const BoardCanvas = ({ paletteName }: BoardCanvasProps) => {
   const latestTick = useStore((s) => s.latestTick);
   const sessionMode = useStore((s) => s.session?.mode ?? "setup");
   const setCellAction = useStore((s) => s.setCell);
+  const animateTransitions = useStore((s) => s.animateTransitions);
 
   const palette = paletteFor(paletteName);
 
@@ -137,9 +139,9 @@ export const BoardCanvas = ({ paletteName }: BoardCanvasProps) => {
       cancelAnimation();
       return;
     }
-    renderBoard(true);
+    renderBoard(animateTransitions);
     return cancelAnimation;
-  }, [board, cancelAnimation, renderBoard]);
+  }, [animateTransitions, board, cancelAnimation, renderBoard]);
 
   // Redraw on container resize so the cells scale to fill the available
   // space without distorting.
@@ -168,7 +170,7 @@ export const BoardCanvas = ({ paletteName }: BoardCanvasProps) => {
     return () => observer.disconnect();
   }, []);
 
-  const editable = sessionMode === "setup";
+  const editable = sessionMode === "setup" && !readOnly;
 
   const cellAt = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
@@ -229,6 +231,7 @@ export const BoardCanvas = ({ paletteName }: BoardCanvasProps) => {
         ref={canvasRef}
         className={styles.canvas}
         style={{ cursor: editable ? "crosshair" : "not-allowed" }}
+        data-readonly={editable ? "false" : "true"}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}

@@ -14,8 +14,9 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 
+use game_of_life::persistence::RunRecordResult;
 use game_of_life::stats::run_statistics::RunStatus;
-use game_of_life::{AdvanceOutcome, CellState, RunStatistics};
+use game_of_life::{AdvanceOutcome, CellState, IterationSeries, RunStatistics};
 
 /// Top-level mode the frontend reflects in its UI (toolbar badge, edit
 /// menu enablement, lock cursor on the canvas, etc.).
@@ -195,6 +196,18 @@ impl IpcRunStatus {
             RunStatus::Cyclic => IpcRunStatus::Cyclic,
         }
     }
+
+    pub fn try_from_run_record_status(status: &str) -> Result<Self, String> {
+        match status {
+            "max_iterations" => Ok(IpcRunStatus::MaxIterations),
+            "extinct" => Ok(IpcRunStatus::Extinct),
+            "stable" => Ok(IpcRunStatus::Stable),
+            "cyclic" => Ok(IpcRunStatus::Cyclic),
+            other => Err(format!(
+                "Unknown run status '{other}' in run record; expected max_iterations, extinct, stable, or cyclic."
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -233,6 +246,61 @@ impl From<&RunStatistics> for IpcRunStatistics {
             cycle_period: s.cycle.map(|cycle| cycle.period),
         }
     }
+}
+
+impl IpcRunStatistics {
+    pub fn try_from_result(result: &RunRecordResult) -> Result<Self, String> {
+        Ok(Self {
+            initial_alive_count: result.initial_alive_count,
+            final_alive_count: result.final_alive_count,
+            peak_alive_count: result.peak_alive_count,
+            peak_alive_generation: result.peak_alive_generation,
+            min_alive_count: result.min_alive_count,
+            min_alive_generation: result.min_alive_generation,
+            total_births: result.total_births,
+            total_deaths: result.total_deaths,
+            iterations_run: result.iterations_run,
+            status: IpcRunStatus::try_from_run_record_status(&result.status)?,
+            cycle_start_generation: result.cycle_start_generation,
+            cycle_detected_generation: result.cycle_detected_generation,
+            cycle_period: result.cycle_period,
+        })
+    }
+}
+
+impl From<&RunRecordResult> for IpcRunStatistics {
+    fn from(result: &RunRecordResult) -> Self {
+        // Run-record parsing validates statuses before constructing this type.
+        // Commands use `try_from_result` so corrupt files still become UX errors.
+        Self::try_from_result(result).expect("RunRecordResult status must be parser-validated")
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct IpcIterationSeries {
+    pub alive: Vec<u64>,
+    pub births: Vec<u64>,
+    pub deaths: Vec<u64>,
+}
+
+impl From<&IterationSeries> for IpcIterationSeries {
+    fn from(series: &IterationSeries) -> Self {
+        Self {
+            alive: series.alive.clone(),
+            births: series.births.clone(),
+            deaths: series.deaths.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct IpcRunSeries {
+    pub path: String,
+    pub filename: String,
+    pub summary: IpcRunStatistics,
+    pub series: Option<IpcIterationSeries>,
 }
 
 /// What `get_session` returns. Drives the toolbar mode badge, the menu

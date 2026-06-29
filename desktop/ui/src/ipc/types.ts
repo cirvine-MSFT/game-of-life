@@ -8,7 +8,8 @@ export type Mode = "setup" | "paused" | "playing" | "jumpingTo";
 
 export type IpcRunStatus = "maxIterations" | "extinct" | "stable" | "cyclic";
 
-export type PatternName = "demo" | "blinker" | "fullyAlive";
+export const PATTERN_NAMES = ["demo", "blinker", "fullyAlive"] as const;
+export type PatternName = (typeof PATTERN_NAMES)[number];
 
 export type InitialSource =
   | { kind: "empty" }
@@ -58,6 +59,19 @@ export interface IpcRunStatistics {
   cycleStartGeneration?: number | null;
   cycleDetectedGeneration?: number | null;
   cyclePeriod?: number | null;
+}
+
+export interface IpcIterationSeries {
+  alive: number[];
+  births: number[];
+  deaths: number[];
+}
+
+export interface IpcRunSeries {
+  path: string;
+  filename: string;
+  summary: IpcRunStatistics;
+  series: IpcIterationSeries | null;
 }
 
 export interface RunCompleted {

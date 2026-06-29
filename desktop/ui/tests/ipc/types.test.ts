@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 
-import { decodeBoard, type BoardPayload, type SessionInfo } from "./types";
+import {
+  decodeBoard,
+  type BoardPayload,
+  type IpcRunSeries,
+  type SessionInfo,
+} from "../../src/ipc/types";
 
 describe("decodeBoard", () => {
   it("round-trips a small board through base64", () => {
@@ -99,5 +104,36 @@ describe("SessionInfo shape", () => {
       status: "cyclic",
     };
     expect(info.status).toBe("cyclic");
+  });
+});
+
+describe("IpcRunSeries shape", () => {
+  it("accepts a saved run with per-iteration series", () => {
+    const loaded: IpcRunSeries = {
+      path: "C:\\runs\\blinker.gol",
+      filename: "blinker.gol",
+      summary: {
+        initialAliveCount: 3,
+        finalAliveCount: 3,
+        peakAliveCount: 3,
+        peakAliveGeneration: 0,
+        minAliveCount: 3,
+        minAliveGeneration: 0,
+        totalBirths: 4,
+        totalDeaths: 4,
+        iterationsRun: 2,
+        status: "maxIterations",
+        cycleStartGeneration: null,
+        cycleDetectedGeneration: null,
+        cyclePeriod: null,
+      },
+      series: {
+        alive: [3, 3, 3],
+        births: [0, 2, 2],
+        deaths: [0, 2, 2],
+      },
+    };
+
+    expect(loaded.series?.alive).toEqual([3, 3, 3]);
   });
 });

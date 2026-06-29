@@ -37,6 +37,6 @@ pub use pattern_analysis::{
     PatternMatch, PatternMatchDetails, PatternObservation, PatternSpan,
 };
 pub use stats::{
-    terminal_status_for_outcome, AdvanceOutcome, CycleStatistics, RunStatistics,
+    terminal_status_for_outcome, AdvanceOutcome, CycleStatistics, IterationSeries, RunStatistics,
     RunStatisticsCollector,
 };

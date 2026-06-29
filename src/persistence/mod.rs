@@ -2,7 +2,7 @@
 //!
 //! Two file types share one parser pair:
 //!
-//! - **Run record** (`GOL-RUN-RECORD v1`): the full file written at the end of
+//! - **Run record** (`GOL-RUN-RECORD v1|v2`): the full file written at the end of
 //!   a run, capturing the configuration, run statistics, the initial board, and
 //!   the final board. Protected by a `content_hash` trailer.
 //! - **Board snapshot** (`GOL-BOARD-SNAPSHOT v1`): a standalone, hash-free,
@@ -32,8 +32,9 @@ pub use board_snapshot::{
 pub use errors::PersistenceIoError;
 pub use hash::{fnv1a_64, format_hash, parse_hash, HashParseError};
 pub use magic::{
-    sniff_file_kind, sniff_from_reader, FileKind, MagicError, BOARD_SNAPSHOT_MAGIC,
-    RUN_RECORD_MAGIC, SCHEMA_VERSION,
+    sniff_file_kind, sniff_from_reader, sniff_run_record_version, FileKind, MagicError,
+    RunRecordVersion, BOARD_SNAPSHOT_MAGIC, BOARD_SNAPSHOT_SCHEMA_VERSION, RUN_RECORD_MAGIC,
+    RUN_RECORD_MAGIC_V1, RUN_RECORD_MAGIC_V2, RUN_RECORD_SCHEMA_VERSION,
 };
 pub use parser::{ParseError, ParseLocation};
 pub use run_id::{format_run_id, parse_run_id, short_run_id, RunId, RunIdParseError};
