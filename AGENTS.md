@@ -67,6 +67,17 @@ Why the wrapper file: cargo's integration-test discovery only picks up top-level
 
 End-to-end binary-driven tests (e.g. CLI tests that drive the actual binary via `Command::new(env!("CARGO_BIN_EXE_game-of-life"))`) live alongside their module — `tests/persistence/cli_tests.rs` covers binary-driven persistence behavior.
 
+## Architecture diagrams
+
+The repo's architecture is documented as `.excalidraw` sources under `docs/`, each with a rendered `.svg` companion. The **`diagrams` skill** at `.github/skills/diagrams/SKILL.md` owns these — read it before creating, updating, or re-rendering a diagram. Its `catalog.yml` lists every diagram, what it covers, and which source paths' changes are likely to invalidate it.
+
+Rendering:
+
+- **Local authoring** — open in the `excalidraw-workbench` canvas extension (offline, no SSO, in-place edits with comments).
+- **Scripted** — `node .github/scripts/render-excalidraw.mjs <input> <output>` for one diagram, or `node .github/scripts/render-all.mjs` for the whole catalog.
+
+A per-PR workflow (`.github/workflows/update-diagrams.yml`) detects when PR changes touch tracked paths, re-renders all SVGs, commits drift back to the PR branch, and pings `@copilot` to update diagram *content* when needed. The workflow never fails the PR on diagram errors.
+
 ## What Can Be Changed
 
 ✅ **Safe to modify:**
