@@ -1,0 +1,19 @@
+{
+  "name": "game-of-life-diagram-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Repo-scoped scripts for rendering and detecting Excalidraw diagrams. Not shipped with the product; used only by the diagrams skill and the update-diagrams workflow.",
+  "scripts": {
+    "render": "node render-excalidraw.mjs",
+    "render-all": "node render-all.mjs",
+    "detect-stale": "node detect-stale-diagrams.mjs"
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "0.17.6",
+    "js-yaml": "4.1.0",
+    "puppeteer": "23.10.4",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  }
+}

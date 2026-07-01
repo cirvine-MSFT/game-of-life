@@ -1,0 +1,191 @@
+name: Update diagrams
+
+# Runs on every PR. Step 1 detects which catalog diagrams a PR's file changes
+# may have invalidated and re-renders all .excalidraw sources to keep SVGs
+# in lockstep. Step 2 commits any rendered SVG changes back to the PR
+# branch. Step 3 leaves a comment listing stale diagrams that need *content*
+# review and pings @copilot to pick the work up via the Coding Agent.
+#
+# Design notes:
+# - This workflow never fails the PR on diagram problems. Diagrams must not
+#   gate code merges. Render or commit failures degrade to warnings.
+# - Only Ubuntu is needed (free for public repos); no Windows/macOS matrix.
+# - cancel-in-progress prevents pile-ups on rapid pushes.
+# - We render *all* catalog diagrams, not just stale ones, because the
+#   .excalidraw source is the truth and SVGs may have been hand-edited or
+#   left stale by a previous commit.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-diagrams-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  update-diagrams:
+    name: Render diagrams and flag stale ones
+    runs-on: ubuntu-latest
+
+    # Skip on forks (we can't push back without elevated permissions) and
+    # skip when the PR head was pushed by our own bot — otherwise the
+    # "re-render + push" step below re-triggers this workflow in a loop and
+    # spams duplicate @copilot comments.
+    if: >
+      github.event.pull_request.head.repo.full_name == github.repository
+      && github.actor != 'github-actions[bot]'
+      && github.event.sender.login != 'github-actions[bot]'
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          # Persist the workflow's GITHUB_TOKEN so the later `git push` back
+          # to the PR branch reuses the same credential set.
+          persist-credentials: true
+
+      - name: Check that diagram tooling exists on this branch
+        id: preflight
+        run: |
+          if [ -f .github/scripts/package-lock.json ] \
+             && [ -f .github/skills/diagrams/catalog.yml ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Diagram tooling not present on this branch; skipping."
+          fi
+
+      - name: Setup Node
+        if: steps.preflight.outputs.ready == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: .github/scripts/package-lock.json
+
+      - name: Install renderer deps
+        if: steps.preflight.outputs.ready == 'true'
+        working-directory: .github/scripts
+        run: npm ci --no-audit --no-fund
+
+      - name: Detect stale diagrams
+        id: detect
+        if: steps.preflight.outputs.ready == 'true'
+        working-directory: .github/scripts
+        run: |
+          node detect-stale-diagrams.mjs \
+            "origin/${{ github.event.pull_request.base.ref }}" \
+            HEAD
+        continue-on-error: true
+
+      - name: Render all diagrams from catalog
+        id: render
+        if: steps.preflight.outputs.ready == 'true'
+        working-directory: .github/scripts
+        run: node render-all.mjs
+        continue-on-error: true
+
+      - name: Commit SVG changes (if any)
+        id: commit
+        if: steps.preflight.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- docs/*.svg; then
+            echo "no SVG changes to commit"
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git add docs/*.svg
+          # No [skip ci] — GitHub Actions ignores it anyway. The `if:` guard
+          # on this job is what prevents a re-trigger loop.
+          git commit -m "docs: re-render diagrams" \
+            -m "Auto-rendered by .github/workflows/update-diagrams.yml"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          echo "committed=true" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Upsert stale-diagram PR comment
+        # Only comment when detect-stale produced a real, non-empty result.
+        # An empty string means the detect step crashed or found nothing.
+        if: >
+          steps.preflight.outputs.ready == 'true'
+          && steps.detect.outputs.stale_count != ''
+          && steps.detect.outputs.stale_count != '0'
+        uses: actions/github-script@v7
+        env:
+          # Passing via env avoids interpolating multi-line JSON directly
+          # into the script body, which would break template literal parsing
+          # if the JSON contained backticks, ${ sequences, or embedded newlines.
+          STALE_SLUGS: ${{ steps.detect.outputs.stale_slugs }}
+          STALE_DETAIL: ${{ steps.detect.outputs.stale_detail }}
+          COMMITTED: ${{ steps.commit.outputs.committed }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          script: |
+            const MARKER = '<!-- diagrams-skill:stale-comment -->';
+            const slugs = (process.env.STALE_SLUGS || '').split(',').filter(Boolean);
+            if (slugs.length === 0) return;
+
+            let detail = {};
+            try {
+              detail = JSON.parse(process.env.STALE_DETAIL || '{}');
+            } catch (err) {
+              core.warning(`stale_detail JSON parse failed: ${err.message}`);
+            }
+            const committed = process.env.COMMITTED === 'true';
+
+            const rows = slugs.map(slug => {
+              const files = (detail[slug] || []).map(f => '`' + f + '`').join(', ');
+              return `| \`${slug}\` | ${files || '_(no file list — detect step degraded)_'} |`;
+            }).join('\n');
+
+            const body = [
+              MARKER,
+              '## 🖼️ Diagram review needed',
+              '',
+              `This PR touches code paths tracked by ${slugs.length} diagram(s) in [\`catalog.yml\`](.github/skills/diagrams/catalog.yml). Their \`.excalidraw\` sources may need a *content* update — not just a re-render.`,
+              '',
+              '| Diagram | Triggering files |',
+              '|---------|-------------------|',
+              rows,
+              '',
+              committed
+                ? '✅ SVGs were re-rendered from the current `.excalidraw` sources and committed to this PR.'
+                : '_(No SVG changes to commit — sources and renders are already in sync.)_',
+              '',
+              '@copilot — please review the diagrams listed above against the code changes in this PR. Use the `diagrams` skill at `.github/skills/diagrams/SKILL.md`. For each one, decide whether the diagram needs a content update or whether the catalog over-tracked. Patch surgically; preserve element IDs; re-render the SVG; commit with a `docs:` prefix and a brief rationale per diagram.',
+              '',
+              `<sub>_Last checked: ${new Date().toISOString()} — this comment is updated in place on every push._</sub>`,
+            ].join('\n');
+
+            const prNumber = Number(process.env.PR_NUMBER);
+            const { owner, repo } = context.repo;
+
+            // Sticky-comment upsert: find any prior comment carrying our
+            // marker and edit it in place, otherwise create a new one.
+            const existing = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: prNumber, per_page: 100 },
+            );
+            const prior = existing.find(c => c.body && c.body.includes(MARKER));
+
+            if (prior) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: prior.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: prNumber, body,
+              });
+            }
