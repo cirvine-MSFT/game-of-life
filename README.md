@@ -266,6 +266,32 @@ For each generation:
 See [docs/product-code.md](docs/product-code.md) for product module conventions and [docs/testing.md](docs/testing.md) for test organization, `edge_case_` labels, and `negative_` labels.
 For the persistence file format, integrity model, and CLI verbs, see the **Persistence** section in [docs/design.md](docs/design.md).
 
+## Architecture diagrams
+
+Architecture is documented as Excalidraw diagrams under [`docs/`](docs/). Each `.excalidraw` source has a matching `.svg` companion rendered from it; the SVGs render inline on GitHub and in the desktop docs.
+
+| Diagram | Covers |
+|---------|--------|
+| [`architecture`](docs/architecture.svg) | High-level shape of library, CLI binary, and core modules |
+| [`board-memory-architecture`](docs/board-memory-architecture.svg) | `InMemoryBoard` memory layout and transitional cell states |
+| [`persistence-architecture`](docs/persistence-architecture.svg) | Run record file format and integrity model |
+| [`streaming-architecture`](docs/streaming-architecture.svg) | `StreamingBoard` chunking and signature tracking |
+| [`desktop-ui-revamp`](docs/desktop-ui-revamp.svg) | Tauri shell, IPC boundary, and TypeScript UI |
+| [`cli-vs-desktop`](docs/cli-vs-desktop.svg) | Where features live: library, CLI binary, or desktop app |
+
+Diagrams are owned by the **`diagrams` skill** at [`.github/skills/diagrams/SKILL.md`](.github/skills/diagrams/SKILL.md). A per-PR workflow ([`update-diagrams.yml`](.github/workflows/update-diagrams.yml)) detects when PR changes touch code paths a diagram tracks, re-renders all SVGs, commits drift back to the PR branch, and pings `@copilot` to update diagram *content* via the diagrams skill when needed.
+
+To render diagrams locally:
+
+```bash
+cd .github/scripts
+npm install                                          # one-time
+node render-all.mjs                                  # render every catalog diagram
+node render-excalidraw.mjs docs/<slug>.excalidraw docs/<slug>.svg
+```
+
+To author or edit a diagram interactively, open it in the [`excalidraw-workbench`](https://github.com/cirvine-msft/copilot-toolkit) canvas extension from a Copilot session — offline, no SSO, in-place editing with comment threads.
+
 ## Desktop visualizer (preview)
 
 A Tauri v2 desktop app lives in [`desktop/`](desktop/) and wraps the existing

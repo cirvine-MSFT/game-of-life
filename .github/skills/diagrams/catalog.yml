@@ -1,0 +1,128 @@
+# Diagram catalog for the game-of-life repo.
+#
+# Each entry describes one .excalidraw file under docs/. The per-PR workflow
+# (.github/workflows/update-diagrams.yml) maps PR file changes to "stale"
+# diagrams via the `tracks` globs.
+#
+# Add a new entry whenever you create a new diagram. See
+# .github/skills/diagrams/SKILL.md for the authoring workflow.
+
+diagrams:
+  - slug: architecture
+    title: System architecture
+    description: >
+      High-level overview of how the library, CLI binary, and key modules
+      relate. The entry point for new contributors trying to understand the
+      codebase shape.
+    audience: new contributors
+    tracks:
+      - src/lib.rs
+      - src/main.rs
+      - src/config.rs
+      - src/board/mod.rs
+      - src/algorithms/mod.rs
+      - src/persistence/mod.rs
+      - src/stats/mod.rs
+      - src/pattern_analysis/mod.rs
+    must_show:
+      - Library crate (`game_of_life`) vs. binary crate (`game-of-life`)
+      - Top-level modules and how they depend on each other
+      - Where SimulationConfig enters and how it threads through
+
+  - slug: board-memory-architecture
+    title: Board memory layout and transitional states
+    description: >
+      How InMemoryBoard packs cells, the meaning of Dead/Alive/Dying/
+      Resurrecting transitional states, and the two-pass (mark + normalize)
+      generation algorithm.
+    audience: contributors changing core simulation logic
+    tracks:
+      - src/board/in_memory_board.rs
+      - src/board/cell_state.rs
+      - src/board/view.rs
+      - src/board/editor.rs
+      - src/algorithms/in_place_transitional_updater.rs
+      - src/algorithms/cell_rule.rs
+    must_show:
+      - The four CellState variants and the transitions between them
+      - Mark pass vs. normalize pass
+      - Single-buffer guarantee (no double-buffering)
+
+  - slug: persistence-architecture
+    title: Run record persistence format
+    description: >
+      Anatomy of a saved run record file — the magic header, run ID, hash
+      verification, snapshot encoding, and how the parser validates and loads
+      a record back into memory.
+    audience: contributors touching persistence
+    tracks:
+      - src/persistence/mod.rs
+      - src/persistence/board_snapshot.rs
+      - src/persistence/hash.rs
+      - src/persistence/magic.rs
+      - src/persistence/parser.rs
+      - src/persistence/run_id.rs
+      - src/persistence/run_record.rs
+    must_show:
+      - File layout: magic | run id | metadata | snapshots | hash
+      - Write path vs. read path
+      - Where integrity hashing protects against accidental edits
+
+  - slug: streaming-architecture
+    title: Streaming board internals
+    description: >
+      How StreamingBoard chunks generations to disk or stdout for runs that
+      exceed in-memory budgets, including the buffering strategy and the
+      contract with BoardView consumers.
+    audience: contributors touching the streaming module
+    tracks:
+      - src/board/streaming_board.rs
+      - src/board/signature.rs
+      - src/board/coordinate.rs
+    must_show:
+      - Chunk boundaries and the streaming buffer
+      - How signatures detect cycles without holding full history
+      - Backpressure / flush behavior
+
+  - slug: desktop-ui-revamp
+    title: Desktop app architecture
+    description: >
+      How the Tauri-based desktop app is layered — the Rust shell
+      (`desktop/src/`), the IPC command surface, the session lifecycle, and
+      the TypeScript UI (`desktop/ui/src/`).
+    audience: contributors touching the desktop app
+    tracks:
+      - desktop/src/lib.rs
+      - desktop/src/main.rs
+      - desktop/src/session.rs
+      - desktop/src/events.rs
+      - desktop/src/ipc_types.rs
+      - desktop/src/commands/mod.rs
+      - desktop/src/commands/run_commands.rs
+      - desktop/src/commands/session_commands.rs
+      - desktop/src/commands/setup_commands.rs
+      - desktop/ui/src/**
+    must_show:
+      - Rust shell ↔ UI IPC boundary
+      - Session lifecycle (open, run, persist, close)
+      - Reuse of the core `game_of_life` library
+
+  - slug: cli-vs-desktop
+    title: CLI binary vs. desktop app
+    description: >
+      How the same `game_of_life` library powers both the headless CLI
+      (`game-of-life` binary) and the desktop app, with the boundary between
+      shared library code, CLI-only orchestration, and desktop-only IPC/UI.
+    audience: new contributors choosing where to add a feature
+    tracks:
+      - src/lib.rs
+      - src/main.rs
+      - src/config.rs
+      - desktop/src/lib.rs
+      - desktop/src/main.rs
+      - desktop/src/commands/mod.rs
+    must_show:
+      - "`game_of_life` library at the center, consumed by both binaries"
+      - "What lives only in `src/main.rs` (CLI flag parsing, stdout rendering)"
+      - "What lives only in `desktop/` (Tauri IPC, session UI)"
+      - "Shared types crossing the boundary (SimulationConfig, RunRecord)"
