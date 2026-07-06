@@ -16,6 +16,18 @@ https://github.com/cirvine-MSFT/game-of-life/security/advisories/new
 
 If private reporting is unavailable, contact the maintainer out of band through the GitHub profile instead of disclosing the issue publicly.
 
+## Automated security coverage
+
+The repository uses:
+
+- Dependabot version and security updates for GitHub Actions, Rust crates, desktop Rust crates, desktop UI npm packages, and repository diagram tooling.
+- Dependency review on pull requests to block newly introduced vulnerable dependencies at moderate severity or higher.
+- CodeQL analysis for Rust plus JavaScript/TypeScript.
+- RustSec `cargo audit` checks for root and desktop lockfiles.
+- `npm audit` checks for desktop UI and repository tooling lockfiles.
+- OpenSSF Scorecard analysis uploaded to GitHub code scanning.
+- GitHub secret scanning and push protection.
+
 ## Disclosure expectations
 
 The maintainer will triage reports privately, decide whether the issue is in scope, and publish an advisory or release note when an actionable fix is available. Please wait for maintainer confirmation before discussing the issue publicly.

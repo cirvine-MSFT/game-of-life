@@ -1,0 +1,107 @@
+name: Security checks
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**/Cargo.lock'
+      - '**/Cargo.toml'
+      - '**/package-lock.json'
+      - '**/package.json'
+      - '.github/dependabot.yml'
+      - '.github/workflows/security.yml'
+  pull_request:
+    paths:
+      - '**/Cargo.lock'
+      - '**/Cargo.toml'
+      - '**/package-lock.json'
+      - '**/package.json'
+      - '.github/dependabot.yml'
+      - '.github/workflows/security.yml'
+  schedule:
+    - cron: '41 13 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          vulnerability-check: true
+          license-check: false
+
+  cargo-audit:
+    name: Cargo audit (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: root
+            lockfile: Cargo.lock
+          - name: desktop
+            lockfile: desktop/Cargo.lock
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit lockfile
+        run: cargo audit --file "${{ matrix.lockfile }}"
+
+  npm-audit:
+    name: npm audit (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: desktop-ui
+            directory: desktop/ui
+            lockfile: desktop/ui/package-lock.json
+          - name: diagram-scripts
+            directory: .github/scripts
+            lockfile: .github/scripts/package-lock.json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ${{ matrix.lockfile }}
+
+      - name: npm ci
+        working-directory: ${{ matrix.directory }}
+        run: npm ci
+
+      - name: npm audit
+        working-directory: ${{ matrix.directory }}
+        run: npm audit --audit-level=moderate
