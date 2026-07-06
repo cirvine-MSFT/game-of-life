@@ -20,6 +20,8 @@ on:
       - '.github/dependabot.yml'
       - '.github/workflows/security.yml'
   schedule:
+    # GitHub Actions cron is UTC. Run before Monday's 09:00 PT Dependabot
+    # window so the default branch baseline is fresh before update PRs appear.
     - cron: '41 13 * * 1'
   workflow_dispatch:
 

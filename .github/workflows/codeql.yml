@@ -6,6 +6,8 @@ on:
       - main
   pull_request:
   schedule:
+    # GitHub Actions cron is UTC. Run CodeQL on Tuesday, away from Monday
+    # dependency audits/updates, with an odd minute to avoid top-of-hour queues.
     - cron: '23 13 * * 2'
   workflow_dispatch:
 

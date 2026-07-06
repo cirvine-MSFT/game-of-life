@@ -5,6 +5,8 @@ on:
     branches:
       - main
   schedule:
+    # GitHub Actions cron is UTC. Run on Wednesday to keep weekly supply-chain
+    # posture checks separate from Monday audits and Tuesday CodeQL analysis.
     - cron: '17 14 * * 3'
   workflow_dispatch:
 
