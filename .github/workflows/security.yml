@@ -72,7 +72,9 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Audit lockfile
-        run: cargo audit --file "${{ matrix.lockfile }}"
+        # Tauri's current Linux GTK stack still pulls glib with RUSTSEC-2024-0429.
+        # Ignore only that tracked advisory so new unsound advisories still fail.
+        run: cargo audit --deny unsound --ignore RUSTSEC-2024-0429 --file "${{ matrix.lockfile }}"
 
   npm-audit:
     name: npm audit (${{ matrix.name }})
