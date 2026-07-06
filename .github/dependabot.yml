@@ -1,18 +1,79 @@
 version: 2
+# Stagger Monday dependency update checks during Casey's Pacific workday so
+# generated PRs are reviewed while fresh and do not all open at once.
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    labels:
+      - "dependencies"
+      - "security"
+    open-pull-requests-limit: 5
+
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "09:15"
+      timezone: "America/Los_Angeles"
+    groups:
+      rust-root-dependencies:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "security"
+    open-pull-requests-limit: 5
+
   - package-ecosystem: "cargo"
     directory: "/desktop"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "09:30"
+      timezone: "America/Los_Angeles"
+    groups:
+      desktop-rust-dependencies:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "security"
+    open-pull-requests-limit: 5
+
   - package-ecosystem: "npm"
     directory: "/desktop/ui"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "09:45"
+      timezone: "America/Los_Angeles"
+    groups:
+      desktop-ui-dependencies:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "security"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "npm"
+    directory: "/.github/scripts"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:00"
+      timezone: "America/Los_Angeles"
+    groups:
+      diagram-tooling-dependencies:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "security"
+    open-pull-requests-limit: 5
